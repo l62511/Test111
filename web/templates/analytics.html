@@ -1,18 +1,17 @@
 {% extends "base.html" %}
 {% block title %}售后分析 · 订单客服 Agent 后台{% endblock %}
+{% block page_title %}商品售后分析{% endblock %}
+{% block page_sub %}{{ d.period.label }} · 退款率按订单数计，金额按已放款统计{% endblock %}
+{% block page_actions %}
+<div class="seg">
+  {% for key, label in [('WEEK','本周'), ('MONTH','本月'), ('ALL','全部')] %}
+  <a href="/analytics?period={{ key }}" class="seg-item {% if period == key %}on{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+{% endblock %}
 
 {% block content %}
 <section class="panel">
-  <div class="panel-head">
-    <h2>商品售后分析</h2>
-    <span class="panel-sub">{{ d.period.label }} · 退款率按订单数计，金额按已放款统计</span>
-    <div class="seg">
-      {% for key, label in [('WEEK','本周'), ('MONTH','本月'), ('ALL','全部')] %}
-      <a href="/analytics?period={{ key }}" class="seg-item {% if period == key %}on{% endif %}">{{ label }}</a>
-      {% endfor %}
-    </div>
-  </div>
-
   <div class="kpis">
     <div class="kpi">
       <div class="k-label">退款金额</div>
@@ -29,7 +28,7 @@
       <div class="k-value">{{ d.totals.amount_rate }}<span class="unit">%</span></div>
       <div class="k-hint">GMV {{ d.totals.gmv }}</div>
     </div>
-    <div class="kpi">
+    <div class="kpi {% if d.totals.pending_count %}warn{% endif %}">
       <div class="k-label">待审批</div>
       <div class="k-value">{{ d.totals.pending_count }}<span class="unit">笔</span></div>
       <div class="k-hint">合计 {{ d.totals.pending_amount }}</div>
@@ -37,7 +36,7 @@
     <div class="kpi">
       <div class="k-label">自动 / 人工</div>
       <div class="k-value">{{ d.human_vs_auto.auto }}<span class="unit">/</span>{{ d.human_vs_auto.human }}</div>
-      <div class="k-hint">低风险自动放款笔数 / 人工放款</div>
+      <div class="k-hint">自动放款 / 人工放款</div>
     </div>
   </div>
 
@@ -51,7 +50,7 @@
           <span class="rk">{{ p.rank }}</span>
           <div class="rk-body">
             <div class="rk-top">
-              <span class="rk-name">{{ p.item_name }}</span>
+              <span class="rk-name" title="{{ p.item_name }}">{{ p.item_name }}</span>
               <span class="rk-amt">{{ p.amount }}</span>
             </div>
             <div class="rk-bar">
@@ -66,7 +65,7 @@
         {% endfor %}
       </ol>
       {% else %}
-      <p class="muted">这段时间没有已放款的退款。</p>
+      <p class="muted small">这段时间没有已放款的退款。</p>
       {% endif %}
     </div>
 
@@ -83,21 +82,58 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="muted">暂无数据。</p>
+      <p class="muted small">暂无数据。</p>
       {% endif %}
     </div>
   </div>
 
   <div class="card">
     <h3>近 14 天退款金额</h3>
-    <div class="trend">
-      {% for t in d.trend %}
-      <div class="t-col" title="{{ t.date }} · {{ t.count }} 笔">
-        <div class="t-bar" style="height: {{ ((t.amount_cents / peak) * 100) | round(1) }}%"></div>
-        <div class="t-label">{{ t.label if loop.index0 % 2 == 0 else '' }}</div>
+    {% set n = d.trend|length %}
+    {% if n > 1 %}
+    {% set W = 1200 %}
+    {% set H = 160 %}
+    {% set top = 14 %}
+    {% set base = H - 8 %}
+    {% set step = W / (n - 1) %}
+    <div class="trend-wrap">
+      <svg class="trend-svg" viewBox="0 0 {{ W }} {{ H }}" role="img" aria-label="近 14 天退款金额趋势">
+        <defs>
+          <linearGradient id="tgrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3a56e4" stop-opacity=".16"/>
+            <stop offset="100%" stop-color="#3a56e4" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        {% for g in [0.25, 0.5, 0.75] %}
+        <line x1="0" y1="{{ (H * g)|round(1) }}" x2="{{ W }}" y2="{{ (H * g)|round(1) }}"
+              stroke="#edf0f5" stroke-width="1" vector-effect="non-scaling-stroke"/>
+        {% endfor %}
+        <line x1="0" y1="{{ H - 1 }}" x2="{{ W }}" y2="{{ H - 1 }}"
+              stroke="#e4e8ef" stroke-width="1" vector-effect="non-scaling-stroke"/>
+        <path d="M 0 {{ base }} {% for t in d.trend %}L {{ (loop.index0 * step)|round(1) }} {{ (base - (t.amount_cents / peak) * (H - top))|round(1) }} {% endfor %}L {{ W }} {{ base }} Z"
+              fill="url(#tgrad)"/>
+        <polyline points="{% for t in d.trend %}{{ (loop.index0 * step)|round(1) }},{{ (base - (t.amount_cents / peak) * (H - top))|round(1) }} {% endfor %}"
+                  fill="none" stroke="#3a56e4" stroke-width="2"
+                  stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+        {% for t in d.trend %}
+          {% if t.amount_cents %}
+          <circle cx="{{ (loop.index0 * step)|round(1) }}"
+                  cy="{{ (base - (t.amount_cents / peak) * (H - top))|round(1) }}"
+                  r="4" fill="#fff" stroke="#3a56e4" stroke-width="2">
+            <title>{{ t.date }} · {{ t.count }} 笔 · ¥{{ '%.2f'|format(t.amount_cents / 100) }}</title>
+          </circle>
+          {% endif %}
+        {% endfor %}
+      </svg>
+      <div class="trend-axis">
+        {% for t in d.trend %}
+        <span>{% if loop.index0 % 3 == 0 %}{{ t.label }}{% endif %}</span>
+        {% endfor %}
       </div>
-      {% endfor %}
     </div>
+    {% else %}
+    <p class="muted small">数据不足，暂无法绘制趋势。</p>
+    {% endif %}
   </div>
 
   <div class="card">

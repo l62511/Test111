@@ -6,7 +6,7 @@
       "username": "zhangwei",
       "name": "张伟",
       "role": "customer",
-      "password_hash": "pbkdf2_sha256$260000$Y9pgo7M8lBMq4cMXX1LTCw==$321CQWQ3CpBoQQ5djKu7+DfMRQjajMlu6+KAOsWhjF0=",
+      "password_hash": "pbkdf2_sha256$260000$2Ws6hmF4Ca0nvHWRKyTVcg==$K84+BfwGDjmdquzcRLGQOD8kkplz5fW7q5mJDO58Wbk=",
       "created_at": "2026-09-01 09:00:00"
     },
     "u_1002": {
@@ -14,7 +14,7 @@
       "username": "lina",
       "name": "李娜",
       "role": "customer",
-      "password_hash": "pbkdf2_sha256$260000$DX37kXMJ1suOyA9DGpiBMA==$DMDk2LHPQTx8QaqOSfoYaQYoBJZZtxmgl4lffhazCuE=",
+      "password_hash": "pbkdf2_sha256$260000$PsCkKvFcvoCOpCh0pGRAxA==$5BoNe3f5ohFa5mDBMJw5LVmXtA53nqBYJqGffhlCgB0=",
       "created_at": "2026-09-01 09:00:00"
     },
     "u_1003": {
@@ -22,7 +22,7 @@
       "username": "wangqiang",
       "name": "王强",
       "role": "customer",
-      "password_hash": "pbkdf2_sha256$260000$Sro5eHOKIfFdBba2fH3tug==$Cw7SityLhP4aT+ICp7bOWlh2E8/yLLQNYSZK4kS8Rk4=",
+      "password_hash": "pbkdf2_sha256$260000$wua+M7pvtEHEVcVRs8+HaQ==$E6CR+jfTcNmQysOuIMWxujIbdYKG5+R2Ev88uRHyQp0=",
       "created_at": "2026-09-01 09:00:00"
     },
     "m_2001": {
@@ -30,7 +30,7 @@
       "username": "merchant",
       "name": "陈明",
       "role": "merchant",
-      "password_hash": "pbkdf2_sha256$260000$V0DfacxON23IyaM4tFhaJw==$jLYpp/fpwdHKYypoytd9cmNNK9uTCfQA4r0iYAKTk3s=",
+      "password_hash": "pbkdf2_sha256$260000$ggOoXiubMoKqzUDrIjtHCg==$wKQ9Y/hPkxo1oetzbzRp5B9oGy3tcM3If7mkmvQw1jY=",
       "created_at": "2026-09-01 09:00:00"
     }
   }

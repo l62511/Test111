@@ -1,13 +1,10 @@
 {% extends "base.html" %}
 {% block title %}审计 · 订单客服 Agent 后台{% endblock %}
+{% block page_title %}运行与操作审计{% endblock %}
+{% block page_sub %}用户指令、Agent 思考、工具调用与结果、人工操作，全部按序留痕{% endblock %}
 
 {% block content %}
 <section class="panel">
-  <div class="panel-head">
-    <h2>运行与操作审计</h2>
-    <span class="panel-sub">用户指令、Agent 思考、工具调用与结果、人工操作，全部按序留痕</span>
-  </div>
-
   <div class="kpis kpis-sm">
     <div class="kpi"><div class="k-label">事件总数</div><div class="k-value">{{ audit_stats.total }}</div></div>
     <div class="kpi"><div class="k-label">今日</div><div class="k-value">{{ audit_stats.today }}</div></div>
@@ -18,69 +15,72 @@
     <div class="kpi"><div class="k-label">会话数</div><div class="k-value">{{ audit_stats.sessions }}</div></div>
   </div>
 
-  <form method="get" action="/audit" class="filterbar">
-    <select name="session_id">
-      <option value="">全部会话</option>
-      {% for s in sessions %}
-      <option value="{{ s.session_id }}" {% if s.session_id == filter_session %}selected{% endif %}>
-        {{ s.title }}（{{ s.channel }} · {{ s.user_name }}）
-      </option>
-      {% endfor %}
-    </select>
-    <select name="kind">
-      <option value="">全部类型</option>
-      {% for k, label in kind_label.items() %}
-      <option value="{{ k }}" {% if k == filter_kind %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    <select name="status">
-      <option value="">全部状态</option>
-      <option value="OK" {% if filter_status == 'OK' %}selected{% endif %}>成功</option>
-      <option value="ERROR" {% if filter_status == 'ERROR' %}selected{% endif %}>失败</option>
-    </select>
-    <button class="btn tiny" type="submit">筛选</button>
-  </form>
+  <div class="card">
+    <form method="get" action="/audit" class="filterbar" style="margin-bottom: 14px">
+      <select name="session_id">
+        <option value="">全部会话</option>
+        {% for s in sessions %}
+        <option value="{{ s.session_id }}" {% if s.session_id == filter_session %}selected{% endif %}>
+          {{ s.title }}（{{ s.channel }} · {{ s.user_name }}）
+        </option>
+        {% endfor %}
+      </select>
+      <select name="kind">
+        <option value="">全部类型</option>
+        {% for k, label in kind_label.items() %}
+        <option value="{{ k }}" {% if k == filter_kind %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="status">
+        <option value="">全部状态</option>
+        <option value="OK" {% if filter_status == 'OK' %}selected{% endif %}>成功</option>
+        <option value="ERROR" {% if filter_status == 'ERROR' %}selected{% endif %}>失败</option>
+      </select>
+      <button class="btn ghost small" type="submit">筛选</button>
+      <span class="muted small" style="margin-left: auto">{{ events|length }} 条事件</span>
+    </form>
 
-  {% if events %}
-  <table class="tbl audit-tbl">
-    <thead>
-      <tr><th>序号</th><th>时间</th><th>类型</th><th>用户</th><th>通道</th><th>内容</th><th></th></tr>
-    </thead>
-    <tbody>
-    {% for e in events %}
-      <tr class="{% if e.status == 'ERROR' %}row-err{% endif %}">
-        <td class="mono muted">{{ e.seq }}</td>
-        <td class="mono nowrap">{{ e.ts }}</td>
-        <td><span class="tag kind-{{ e.kind|lower }}">{{ e.kind_label }}</span></td>
-        <td>{{ e.user_name or '—' }}</td>
-        <td><span class="pill tiny {{ 'web' if e.channel == 'WEB' else ('sys' if e.channel == 'SYSTEM' else 'cli') }}">{{ e.channel }}</span></td>
-        <td class="cell-text">
-          {% if e.kind == 'TOOL_CALL' %}
-            <span class="mono">{{ e.payload.tool }}</span>
-            <code class="st-args">{{ e.payload.args }}</code>
-          {% elif e.kind == 'TOOL_RESULT' %}
-            <span class="mono">{{ e.payload.tool }}</span> · {{ e.payload.text }}
-          {% elif e.kind == 'RULE_DECISION' %}
-            {{ e.payload.summary }}
-          {% elif e.kind == 'HUMAN_ACTION' %}
-            {{ e.payload.action_label }} · {{ e.payload.note or '' }}
-          {% else %}
-            {{ e.payload.text or e.payload.error or '' }}
-          {% endif %}
-        </td>
-        <td class="nowrap">
-          <details><summary class="mini">详情</summary>
-            <pre class="json">{{ e.payload | tojson(indent=2) }}</pre>
-          </details>
-        </td>
-      </tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  {% else %}
-  <div class="empty"><div class="empty-icon"></div>
-    <p>还没有审计事件。去 <a href="/chat" class="link">Agent 会话</a> 说句话试试。</p>
+    {% if events %}
+    <table class="tbl audit-tbl">
+      <thead>
+        <tr><th>序号</th><th>时间</th><th>类型</th><th>用户</th><th>通道</th><th>内容</th><th></th></tr>
+      </thead>
+      <tbody>
+      {% for e in events %}
+        <tr class="{% if e.status == 'ERROR' %}row-err{% endif %}">
+          <td class="mono muted">{{ e.seq }}</td>
+          <td class="mono nowrap">{{ e.ts }}</td>
+          <td><span class="tag kind-{{ e.kind|lower }}">{{ e.kind_label }}</span></td>
+          <td class="nowrap">{{ e.user_name or '—' }}</td>
+          <td><span class="pill tiny {{ 'web' if e.channel == 'WEB' else ('sys' if e.channel == 'SYSTEM' else 'cli') }}">{{ e.channel }}</span></td>
+          <td class="cell-text">
+            {% if e.kind == 'TOOL_CALL' %}
+              <span class="mono strong">{{ e.payload.tool }}</span>
+              <code class="st-args">{{ e.payload.args }}</code>
+            {% elif e.kind == 'TOOL_RESULT' %}
+              <span class="mono strong">{{ e.payload.tool }}</span> · {{ e.payload.text }}
+            {% elif e.kind == 'RULE_DECISION' %}
+              {{ e.payload.summary }}
+            {% elif e.kind == 'HUMAN_ACTION' %}
+              {{ e.payload.action_label }} · {{ e.payload.note or '' }}
+            {% else %}
+              {{ e.payload.text or e.payload.error or '' }}
+            {% endif %}
+          </td>
+          <td class="nowrap">
+            <details><summary class="mini">详情</summary>
+              <pre class="json">{{ e.payload | tojson(indent=2) }}</pre>
+            </details>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><div class="empty-icon"></div>
+      <p>还没有审计事件。去 <a href="/chat" class="link">Agent 会话</a> 说句话试试。</p>
+    </div>
+    {% endif %}
   </div>
-  {% endif %}
 </section>
 {% endblock %}

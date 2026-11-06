@@ -447,7 +447,7 @@ def main() -> None:
 
     print(f"  后台地址  http://{args.host}:{args.port}")
     print("  商家账号：merchant / admin123")
-    print("  n    端 待审批 / 审核详情 / Agent 会话 / 售后分析 / 审计")
+    print("  六个页面  待审批 / 审核详情 / Agent 会话 / 售后分析 / 审计")
     uvicorn.run(
         "web.app:app" if args.reload else app,
         host=args.host, port=args.port, reload=args.reload, log_level="warning",

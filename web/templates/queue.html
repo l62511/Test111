@@ -1,17 +1,19 @@
 {% extends "base.html" %}
 {% block title %}待审批 · 订单客服 Agent 后台{% endblock %}
+{% block page_title %}人工审核中心{% endblock %}
+{% block page_sub %}按提交时间排队，先到先审 · 风险等级与判定依据由规则引擎给出{% endblock %}
+{% block page_actions %}
+<span class="pill">共 {{ items|length }} 笔待处理</span>
+{% endblock %}
 
 {% block content %}
 <section class="panel">
-  <div class="panel-head">
-    <h2>人工审核中心</h2>
-    <span class="panel-sub">按提交时间排队，先到先审 · 风险等级由规则引擎给出</span>
-  </div>
-
   {% if not items %}
-  <div class="empty">
-    <div class="empty-icon"></div>
-    <p>队列已清空，没有待处理的退款申请</p>
+  <div class="card">
+    <div class="empty">
+      <div class="empty-icon"></div>
+      <p>队列已清空，没有待处理的退款申请</p>
+    </div>
   </div>
   {% else %}
 
@@ -19,19 +21,22 @@
     {% for item in items %}
     <article class="qcard risk-{{ (item.risk_level or 'LOW')|lower }}">
       <div class="qhead">
-        <span class="qpos">#{{ item.queue_position }}</span>
+        <span class="qpos">{{ item.queue_position }}</span>
         <div class="qtitle">
           <div class="qline1">
             <strong>{{ item.item_name }}</strong>
-            <span class="tag">{{ item.status_label }}</span>
+            <span class="status {{ item.status|lower }}">{{ item.status_label }}</span>
             <span class="pill risk {{ (item.risk_level or 'LOW')|lower }}">
               {{ item.risk_label or '未评级' }}{% if item.risk_score is not none %} · {{ item.risk_score }} 分{% endif %}
             </span>
             {% if item.priority %}<span class="pill prio">{{ item.priority }}</span>{% endif %}
+            {% if item.needs_evidence %}<span class="pill warn">需凭证</span>{% endif %}
           </div>
           <div class="qline2">
-            {{ item.user_name }} · {{ item.order_id }} · 申请编号 {{ item.refund_id }}
-            · {{ item.issue_label }}
+            <span>{{ item.user_name }}</span>
+            <span class="mono">{{ item.order_id }}</span>
+            <span class="mono">{{ item.refund_id }}</span>
+            <span>{{ item.issue_label }}</span>
           </div>
         </div>
         <div class="qtime">
@@ -47,7 +52,7 @@
             <span class="mvalue">{{ item.order_amount }}</span>
           </div>
           <div class="mcell">
-            <span class="mlabel">已退</span>
+            <span class="mlabel">已退金额</span>
             <span class="mvalue">{{ item.order_refunded }}</span>
           </div>
           <div class="mcell">
@@ -67,14 +72,13 @@
           </div>
           <div class="progress-legend">
             <span><i class="dot done"></i>已退 {{ (item.order_refunded_cents / item.order_amount_cents * 100) | round(1) }}%</span>
-            <span><i class="dot pending"></i>本次 {{ (item.amount_cents / item.order_amount_cents * 100) | round(1) }}%</span>
+            <span><i class="dot pending"></i>本次申请 {{ (item.amount_cents / item.order_amount_cents * 100) | round(1) }}%</span>
           </div>
         </div>
 
         <div class="decision-line">
-          <span class="rlabel">Agent 判断</span>
+          <span class="rlabel">AGENT 判定</span>
           <span class="rtext">{{ item.decision_summary or '无判定记录' }}</span>
-          {% if item.needs_evidence %}<span class="pill warn">需凭证</span>{% endif %}
         </div>
 
         <div class="reason">
@@ -93,7 +97,7 @@
         <form method="post" action="/refunds/{{ item.refund_id }}/approve" class="inline-form">
           <input type="hidden" name="back" value="/queue">
           <input name="note" placeholder="通过备注（可选）" maxlength="80">
-          <button type="submit" class="btn primary">通过放款</button>
+          <button type="submit" class="btn primary">通过放款 {{ item.amount }}</button>
         </form>
         <form method="post" action="/refunds/{{ item.refund_id }}/reject" class="inline-form reject-form">
           <input type="hidden" name="back" value="/queue">

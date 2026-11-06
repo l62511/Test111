@@ -1,0 +1,59 @@
+# 订单客服 Agent 的容器编排
+#
+#   docker compose up -d --build        启动后台（http://127.0.0.1:8000）
+#   docker compose logs -f web          看日志
+#   docker compose run --rm cli         进顾客端 CLI（先改 as_user）
+#   docker compose down                 停止并保留数据卷
+#   docker compose down -v              停止并删除数据卷（数据会重置）
+
+services:
+  web:
+    build:
+      context: .
+    image: order-agent:1.0.0
+    container_name: order-agent-web
+    ports:
+      - "127.0.0.1:8000:8000"
+    # .env 里有 LLM Key。用 required: false 是为了让没配 .env 的人也能起来，
+    # 只是 Agent 会话页会报错，后台审批/分析部分不受影响。
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ORDER_DATA_DIR: /app/data
+      TZ: Asia/Shanghai
+      # 演示用默认值，生产务必覆盖成随机长字符串
+      MERCHANT_SECRET: ${MERCHANT_SECRET:-demo-secret-change-me-in-production}
+    volumes:
+      # 数据卷：审批、退款、审计都写在这里，容器重建不丢
+      - order-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/login", "-o", "/dev/null"]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+
+  # 顾客端 CLI。默认不启动，用 docker compose run --rm cli 手动进。
+  # 交互式登录要 -it，compose run 自带。
+  cli:
+    image: order-agent:1.0.0
+    profiles: ["cli"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ORDER_DATA_DIR: /app/data
+      TZ: Asia/Shanghai
+      AS_USER: ${AS_USER:-u_1001}
+    volumes:
+      - order-data:/app/data
+    # 已有数据时跳过确认，直接进对话
+    entrypoint: ["/app/docker/entrypoint.sh"]
+    command: ["python", "-m", "agent.main", "--as", "${AS_USER:-u_1001}"]
+    stdin_open: true
+    tty: true
+
+volumes:
+  order-data:

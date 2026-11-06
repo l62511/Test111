@@ -7,30 +7,54 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body class="login-body">
-<div class="login-card">
-  <div class="brand">
-    <span class="logo"></span>
-    <div>
-      <div class="brand-name">退款审批后台</div>
-      <div class="brand-sub">请使用商家账号登录</div>
+  <aside class="login-aside">
+    <div class="la-brand">
+      <span class="la-mark">A</span>
+      <div>
+        <div class="la-title">订单客服 Agent</div>
+        <div class="la-sub">Merchant Console</div>
+      </div>
     </div>
-  </div>
 
-  {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+    <div class="la-body">
+      <h1 class="la-h">让每一笔退款<br>都有<em>依据</em>可查</h1>
+      <p class="la-p">
+        规则引擎先行判定，低风险自动放款，高风险转到你面前。
+        每一次判定、每一次操作，都留下完整痕迹。
+      </p>
+      <ul class="la-points">
+        <li><span class="la-ico">1</span><span>金额由服务端计算，模型无权改写</span></li>
+        <li><span class="la-ico">2</span><span>发过货的订单一律转人工，风险分再低也不例外</span></li>
+        <li><span class="la-ico">3</span><span>指令、思考、工具调用、审批动作全量审计</span></li>
+      </ul>
+    </div>
 
-  <form method="post" action="/login">
-    <label>
-      账号
-      <input name="username" autocomplete="username" autofocus required>
-    </label>
-    <label>
-      密码
-      <input name="password" type="password" autocomplete="current-password" required>
-    </label>
-    <button type="submit" class="btn primary block">登录</button>
-  </form>
+    <div class="la-foot">演示环境 · 数据为虚构，仅用于流程验证</div>
+  </aside>
 
-  <p class="hint">演示账号 merchant / admin123</p>
-</div>
+  <main class="login-main">
+    <div class="login-card">
+      <h2>登录后台</h2>
+      <p class="login-lede">请使用商家账号登录，处理退款与售后审批</p>
+
+      {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+
+      <form method="post" action="/login">
+        <label>
+          账号
+          <input name="username" autocomplete="username" autofocus required>
+        </label>
+        <label>
+          密码
+          <input name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit" class="btn primary">登录</button>
+      </form>
+
+      <div class="login-hint">
+        演示账号 <code>merchant</code> · 密码 <code>admin123</code>
+      </div>
+    </div>
+  </main>
 </body>
 </html>

@@ -7,6 +7,8 @@
 
 业务规则、身份校验、退款金额、走自动还是转人工，全部在服务端裁决，模型只负责理解意图和编排调用。
 
+支持 `docker compose up -d --build` 一键起服务，见「[用 Docker 运行](#5-或者用-docker-运行)」。
+
 ## 设计立场
 
 这个项目把绝大部分精力放在「模型不该有能力做的事」上，而不是「让模型更聪明」。
@@ -141,6 +143,52 @@ python -m web.app --port 8080
 ```
 
 打开 http://127.0.0.1:8000 即可。
+
+### 5. 或者用 Docker 运行
+
+不想在宿主机装 Python 环境时走这条。镜像里依赖装好、时区设成东八区、以非 root 运行。
+
+```bash
+docker compose up -d --build     # 构建并启动
+docker compose logs -f web       # 跟日志
+docker compose ps                # 看状态（含健康检查结果）
+docker compose down              # 停止，数据保留在卷里
+docker compose down -v           # 停止并清空数据卷
+```
+
+打开 http://127.0.0.1:8000，账号密码见下一节。
+
+不用 compose 也可以：
+
+```bash
+docker build -t order-agent:1.0.0 .
+docker run -d --name order-agent -p 8000:8000 --env-file .env order-agent:1.0.0
+```
+
+进顾客端 CLI：
+
+```bash
+docker compose run --rm cli                  # 默认以张伟（u_1001）身份
+AS_USER=u_1002 docker compose run --rm cli   # 换个人
+```
+
+容器里重建演示数据：`docker compose exec web python -m data.seed`
+
+几个不那么显然的设计点：
+
+| 点 | 做法 | 为什么这么做 |
+|---|---|---|
+| 数据 | 命名卷 `order-data` 挂到 `/app/data` | 审批、退款、审计都写在这里，`docker compose down` 后重建容器数据还在 |
+| 首次启动 | `entrypoint.sh` 发现没有 `orders.json` 就自动 seed | 拿镜像直接绑定挂载到空目录时不用手动初始化；已经有数据则原样复用 |
+| 密钥 | `.env` 被 `.dockerignore` 排除，走 `env_file` 注入 | 密钥一旦进了镜像层就永久留在 history 里，删不掉 |
+| 时区 | `TZ=Asia/Shanghai` + 装 tzdata | 「今日已通过」「本周退款」都依赖 `datetime.now()`，容器默认 UTC，跨零点会错一天 |
+| 权限 | 非 root（uid 10001） | `data/` 的所有者在构建时就交给 appuser，否则命名卷首次挂载时归 root，容器内写不进去 |
+| 探活 | 健康检查打 `/login` | 不依赖登录态，同时反映「进程活着」和「模板能渲染」 |
+
+镜像约 402 MB（`python:3.13-slim` + 全部依赖），`pip` 缓存和 `__pycache__` 都关掉了。
+
+> `agent.main` 用的是 `sys.executable`，所以容器里 MCP 子进程自动用同一个解释器，
+> 不需要额外配置。实测容器内一轮对话能正常拉起子进程、调工具、写审计。
 
 ## 演示账号
 
@@ -363,6 +411,11 @@ JSON 文件不像数据库那样自带事务，所以这里自己补了两件事
 │   ├── conftest.py
 │   ├── test_rules.py      # 37 项业务规则测试
 │   └── test_policy.py     # 23 项规则引擎 / 分析 / 审计测试
+├── docker/
+│   └── entrypoint.sh      # 容器入口：数据目录检测 + 首次自动 seed
+├── Dockerfile             # 运行镜像（后台与 CLI 共用）
+├── docker-compose.yml     # 一键起服务，数据卷 + 健康检查
+├── .dockerignore
 ├── .env.example
 └── requirements.txt
 ```

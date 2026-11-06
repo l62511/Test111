@@ -1,0 +1,28 @@
+# .env 里有真实 API Key，绝不能进镜像层（进了就永久留在 history 里）
+.env
+
+# 虚拟环境与各种缓存，都是宿主机产物，容器里自己装
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 版本库与开发笔记
+.git/
+.gitignore
+.gitattributes
+.workbuddy/
+
+# 运行时锁文件，每次请求都在变，会白白让构建缓存失效
+data/*.lock
+
+# 后台界面离线快照，只对离线浏览有意义，服务本身用不到
+.preview/
+
+# 构建定义自身
+Dockerfile
+.dockerignore
+docker-compose.yml

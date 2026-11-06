@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Agent 会话 · 订单客服 Agent 后台{% endblock %}
+{% block page_title %}Agent 会话观测{% endblock %}
+{% block page_sub %}直接与 Agent 对话，每一步思考与工具调用都会留痕{% endblock %}
+{% block page_actions %}
+{% if session %}<span class="pill mono">{{ session.session_id }}</span>{% endif %}
+{% endblock %}
 
 {% block content %}
-<section class="panel chat-panel">
-  <div class="panel-head">
-    <h2>Agent 会话观测</h2>
-    <span class="panel-sub">在这里直接和 Agent 对话，每一步思考与工具调用都会留痕</span>
-  </div>
-
+<section class="panel">
   <div class="chat-layout">
     <!-- 会话列表 -->
     <aside class="chat-aside">
@@ -50,22 +50,21 @@
           </select>
           <button type="submit" class="btn tiny">开始新会话</button>
         </form>
-        {% if session %}
-        <span class="muted small mono">{{ session.session_id }}</span>
-        {% endif %}
       </div>
 
       <div class="thread">
         {% if not session or not session.messages %}
         <div class="empty">
           <div class="empty-icon"></div>
-          <p>还没有对话。试试问“我最近有哪些订单”，或“本周退款金额最高的商品是什么”。</p>
+          <p>还没有对话。试试问「我最近有哪些订单」，或「本周退款金额最高的商品是什么」。</p>
         </div>
         {% else %}
           {% for m in session.messages %}
             {% if m.role == 'user' %}
-            <div class="msg user"><div class="bubble">{{ m.content }}</div>
-              <div class="msg-meta">{{ m.ts }}</div></div>
+            <div class="msg user">
+              <div class="bubble">{{ m.content }}</div>
+              <div class="msg-meta">{{ m.ts }}</div>
+            </div>
             {% else %}
             <div class="msg agent">
               <div class="bubble">
@@ -126,7 +125,7 @@
             <input type="hidden" name="sid" value="{{ session.session_id }}">
             <input type="hidden" name="as_user" value="{{ target }}">
             <input type="hidden" name="decision" value="reject">
-            <button class="btn danger" type="submit">取消操作</button>
+            <button class="btn" type="submit">取消操作</button>
           </form>
         </div>
       </div>
