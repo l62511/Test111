@@ -107,6 +107,12 @@ python -m data.seed
 
 会生成 4 个账号、9 笔订单、3 条退款记录。
 
+> 仓库里的 `data/*.json` **是有意提交的**，所以克隆下来不跑这步也能看到完整数据形态。
+> 代价是跑完 demo 后 `data/*.json` 会被改写、工作区变脏。想回到初始状态，
+> 重跑 `python -m data.seed`，或者 `git checkout -- data/` 丢弃改动。
+> 同理，`.preview/*.html` 是后台界面的离线快照（CSS 已内联），
+> 不启动服务也能用浏览器直接打开核对界面。
+
 ### 4. 启动
 
 **顾客端**（另开一个终端）：
@@ -268,7 +274,11 @@ JSON 文件不像数据库那样自带事务，所以这里自己补了两件事
 │   ├── templates/         # Jinja2 模板
 │   └── static/style.css   # 样式
 ├── data/
-│   └── seed.py            # 生成演示数据
+│   ├── seed.py            # 生成演示数据
+│   ├── users.json         # 账号（密码只存哈希）
+│   ├── orders.json        # 订单
+│   └── refunds.json       # 退款申请与驳回锁
+├── .preview/              # 后台界面离线快照（CSS 内联）
 ├── scripts/
 │   ├── probe_model.py     # 探测模型与 function calling
 │   ├── check_tools.py     # 工具契约检查
