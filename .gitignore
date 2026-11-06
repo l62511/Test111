@@ -1,0 +1,13 @@
+# 密钥与运行产物
+.env
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/*.db
+
+# 保留示例配置
+!.env.example
+
+# 本地工作区数据
+.workbuddy/
