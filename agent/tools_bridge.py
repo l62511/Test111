@@ -23,14 +23,14 @@ def build_client(caller_id: str | None = None) -> MultiServerMCPClient:
     if not caller_id:
         raise RuntimeError("CALLER_ID 未配置，无法以已认证身份启动 MCP Server")
 
-    db_path = os.getenv("ORDER_DB_PATH") or str(BASE_DIR / "data" / "orders.db")
-    if not Path(db_path).is_absolute():
-        db_path = str(BASE_DIR / db_path)
+    data_dir = os.getenv("ORDER_DATA_DIR") or str(BASE_DIR / "data")
+    if not Path(data_dir).is_absolute():
+        data_dir = str(BASE_DIR / data_dir)
 
     env = {
         **os.environ,
         "CALLER_ID": caller_id,
-        "ORDER_DB_PATH": db_path,
+        "ORDER_DATA_DIR": data_dir,
         "PYTHONPATH": str(BASE_DIR),
         "PYTHONIOENCODING": "utf-8",
         "PYTHONUTF8": "1",

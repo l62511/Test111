@@ -13,8 +13,8 @@
 from __future__ import annotations
 
 import asyncio
+import getpass
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -30,10 +30,7 @@ from dotenv import load_dotenv
 load_dotenv(BASE_DIR / ".env")
 
 from langchain.agents import create_agent  # noqa: E402
-from langchain.agents.middleware import (  # noqa: E402
-    HumanInTheLoopMiddleware,
-    InterruptOnConfig,
-)
+from langchain.agents.middleware import HumanInTheLoopMiddleware  # noqa: E402
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from langgraph.types import Command  # noqa: E402
@@ -45,26 +42,10 @@ from mcp_server import service  # noqa: E402
 
 VERBOSE = "--verbose" in sys.argv or "-v" in sys.argv
 
-
-def _refund_needs_approval(req) -> bool:
-    """只有带上 approval_id 的退款调用才中断等审批。
-
-    第一次调用（不带 approval_id）只是「开审批单」，未发货的订单会在这一步
-    直接退款成功，不该弹确认框；已发货的订单会在服务层生成审批单并返回
-    MANUAL_APPROVAL_REQUIRED，模型带上 approval_id 重试时才据此打断。
-    """
-    call = getattr(req, "tool_call", None) or {}
-    args = call.get("args") or {}
-    return bool(args.get("approval_id"))
-
-
+# 提交退款申请不是不可逆操作（钱要等商家审批才动），所以不拦。
+# 取消订单是终态操作，仍然需要在终端确认一次。
 INTERRUPT_ON = {
-    "cancel_order": True,  # 取消始终确认
-    "refund_order": InterruptOnConfig(
-        allowed_decisions=["approve", "reject"],
-        description="已发货订单退款，需要人工审批",
-        when=_refund_needs_approval,
-    ),
+    "cancel_order": True,
 }
 
 
@@ -128,16 +109,11 @@ def _describe(req: dict, caller_id: str) -> list[str]:
         f"   即将执行: {name}",
         f"   参数    : {json.dumps(args, ensure_ascii=False, default=str)}",
     ]
-    if name == "refund_order" and args.get("order_id"):
+    if name == "cancel_order" and args.get("order_id"):
         try:
             info = service.query_orders(caller_id, order_id=args["order_id"])["orders"][0]
-            shipped = info["shipped"]
             lines.append(f"   订单    : {info['item_name']}  {info['amount']}")
-            lines.append(
-                f"   发货状态: {'已发货 ' + (info['shipped_at'] or '') if shipped else '未发货'}"
-                + (f"  运单 {info['tracking_no']}" if info.get("tracking_no") else "")
-            )
-            lines.append(f"   退款原因: {args.get('reason') or '（未填写）'}")
+            lines.append(f"   当前状态: {info['status_label']}")
         except Exception:  # noqa: BLE001
             pass
     return lines
@@ -146,38 +122,24 @@ def _describe(req: dict, caller_id: str) -> list[str]:
 def _ask_approval(value: dict, caller: dict) -> Command:
     """把中断里的待执行动作显示出来，问用户放不放行。"""
     requests = value.get("action_requests", []) or []
-    print("\n   ---------- 需要人工审批 ----------")
+    print("\n   ---------- 需要你确认 ----------")
     for req in requests:
         for line in _describe(req, caller["caller_id"]):
             print(line)
-    print("   ----------------------------------")
+    print("   --------------------------------")
 
     try:
-        answer = input("   确认通过审批？输入 y 通过，其它任意键驳回 > ").strip().lower()
+        answer = input("   确认执行？输入 y 执行，其它任意键取消 > ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         answer = "n"
 
-    approved = answer in {"y", "yes", "是", "确认", "通过"}
-
-    if approved:
-        print("   [审批通过]")
+    if answer in {"y", "yes", "是", "确认", "通过"}:
+        print("   [已确认]")
         decisions = [{"type": "approve"} for _ in requests]
     else:
-        print("   [审批驳回]")
-        # 驳回要落进 trace，否则追踪链里会留一条永远 PENDING 的单子
-        for req in requests:
-            approval_id = (req.get("args") or {}).get("approval_id")
-            if approval_id:
-                try:
-                    service.reject_refund(
-                        approval_id,
-                        approver=f"{caller['caller_name']}（终端人工驳回）",
-                        note="终端审批未通过",
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    print(f"   [警告] 驳回状态未写入追踪记录: {exc}")
+        print("   [已取消操作]")
         decisions = [
-            {"type": "reject", "message": "人工审批未通过，请如实告知用户该退款没有执行，不要重试。"}
+            {"type": "reject", "message": "用户在当前终端取消了该操作，请如实告知用户操作未执行。"}
             for _ in requests
         ]
     return Command(resume={"decisions": decisions})
@@ -197,27 +159,58 @@ async def _run_turn(agent, config, payload, seen: int, caller: dict) -> tuple[di
     return final, seen
 
 
-async def run() -> None:
-    caller_id = os.getenv("CALLER_ID", "").strip()
-    if not caller_id:
-        raise SystemExit("CALLER_ID 未配置，请先编辑 .env")
+def _arg_value(flag: str) -> str | None:
+    if flag in sys.argv:
+        idx = sys.argv.index(flag)
+        if idx + 1 < len(sys.argv):
+            return sys.argv[idx + 1]
+    return None
 
-    try:
-        caller = service.resolve_caller(caller_id)
-    except service.BizError as exc:
-        raise SystemExit(f"身份校验失败: {exc.message}") from exc
+
+def login_interactive() -> dict:
+    """账号密码登录。三次失败即退出。"""
+    print("  请登录（演示账号：zhangwei / 123456）")
+    for attempt in range(3):
+        try:
+            username = input("  账号 > ").strip()
+            password = getpass.getpass("  密码 > ")
+        except (EOFError, KeyboardInterrupt):
+            raise SystemExit("\n已取消登录") from None
+        try:
+            return service.authenticate(username, password, role="customer")
+        except service.BizError as exc:
+            left = 2 - attempt
+            if left > 0:
+                print(f"  {exc.message}，还有 {left} 次机会")
+            else:
+                print(f"  {exc.message}")
+    raise SystemExit("登录失败次数过多，已退出")
+
+
+async def run() -> None:
+    as_user = _arg_value("--as")
+    if as_user:
+        # 调试通道：跳过登录，直接以指定身份进入
+        try:
+            caller = service.resolve_caller(as_user)
+        except service.BizError as exc:
+            raise SystemExit(f"身份校验失败: {exc.message}") from exc
+    else:
+        user = login_interactive()
+        caller = {"caller_id": user["user_id"], "caller_name": user["name"]}
+    caller_id = caller["caller_id"]
 
     print("=" * 62)
     print("  订单客服 Agent  |  ReAct + MCP")
     print(f"  当前用户: {caller['caller_name']} ({caller['caller_id']})")
-    print(f"  数据库  : {service.db_path()}")
+    print(f"  数据目录: {service.store.data_dir()}")
     print("  输入 exit 退出，help 查看示例问题")
     print("=" * 62)
 
     # 整个对话复用一条 MCP 连接，避免每次工具调用都重启子进程
     async with mcp_tools(caller_id) as tools:
         print(f"  已加载工具: {', '.join(t.name for t in tools)}")
-        print("  已发货订单退款需人工审批；未发货直接退款；取消需确认\n")
+        print("  未发货直接退；已发货/已签收提交申请，等商家后台审批；取消需确认\n")
 
         agent = create_agent(
             model=build_llm(),

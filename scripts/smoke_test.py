@@ -1,7 +1,7 @@
 """协议层冒烟测试：完全走 MCP 协议调用三个工具，不经过大模型。
 
 验证的是「Agent 之外」这一整条链路是否真的按规则工作：
-    MCP Client -> stdio -> MCP Server -> 规则引擎 -> SQLite
+    MCP Client -> stdio -> MCP Server -> 规则引擎 -> JSON 存储
 
 用法:
     python scripts/smoke_test.py
@@ -24,10 +24,14 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from data.seed import seed  # noqa: E402
 
-MINE = "ORD20261028001"      # 张伟的已支付、未发货订单
-MINE_CANCELLED = "ORD20261015002"  # 张伟的已取消、未发货订单
-SHIPPED = "ORD20261008009"   # 张伟的已取消、已发货订单（退款需审批）
-OTHERS = "ORD20261103006"    # 李娜的订单
+UID = "u_1001"
+MERCHANT = "m_2001"
+
+PAID = "ORD20261028001"             # 已支付，未发货
+UNSHIPPED = "ORD20261015002"        # 已取消，未发货 -> 直接退
+SHIPPED = "ORD20261008009"          # 已取消，已发货 -> 需审批
+COMPLETED = "ORD20261102005"        # 已完成，已签收 -> 需审批
+OTHERS = "ORD20261103006"           # 李娜的订单
 
 passed = 0
 failed = 0
@@ -40,128 +44,148 @@ def check(label: str, condition: bool, detail: str = "") -> None:
         print(f"  [PASS] {label}")
     else:
         failed += 1
-        print(f"  [FAIL] {label}  {detail}")
+        print(f"  [FAIL] {label}")
+        if detail:
+            print(f"         {detail[:300]}")
 
 
-def parse(result) -> dict:
-    """MCP 工具返回的是 content 列表，取其中的 JSON。"""
-    if isinstance(result, dict):
-        return result
-    if isinstance(result, list):
-        for item in result:
-            if isinstance(item, dict) and item.get("type") == "text":
-                try:
-                    return json.loads(item["text"])
-                except json.JSONDecodeError:
-                    continue
-    if isinstance(result, str):
-        try:
-            return json.loads(result)
-        except json.JSONDecodeError:
-            return {"raw": result}
-    return {"raw": str(result)}
+def parse(raw):
+    """MCP 工具返回的是 content 列表，取出其中的 JSON。"""
+    if isinstance(raw, list):
+        text = next(
+            (c.get("text", "") for c in raw
+             if isinstance(c, dict) and c.get("type") == "text"),
+            "",
+        )
+    else:
+        text = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False)
+    try:
+        return json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        return {"_raw": text}
+
+
+def schema_of(tool) -> dict:
+    """args_schema 可能是 pydantic 模型，也可能已经是 dict。"""
+    schema = tool.args_schema
+    if isinstance(schema, dict):
+        return schema
+    if hasattr(schema, "model_json_schema"):
+        return schema.model_json_schema()
+    return {}
 
 
 async def main() -> None:
-    tmp = Path(tempfile.mkdtemp()) / "smoke.db"
+    tmp = Path(tempfile.mkdtemp()) / "data"
     seed(tmp)
-    os.environ["ORDER_DB_PATH"] = str(tmp)
-    os.environ["CALLER_ID"] = "u_1001"
+    os.environ["ORDER_DATA_DIR"] = str(tmp)
 
-    from agent.tools_bridge import load_tools
+    from agent.tools_bridge import mcp_tools  # noqa: E402
+    from mcp_server import service  # noqa: E402
 
-    tools = {t.name: t for t in await load_tools()}
-    check("三个工具全部经 MCP 暴露", set(tools) == {"query_order", "cancel_order", "refund_order"},
-          str(set(tools)))
+    async with mcp_tools(UID) as tools:
+        t = {tool.name: tool for tool in tools}
 
-    query = tools["query_order"]
-    cancel = tools["cancel_order"]
-    refund = tools["refund_order"]
+        print("[1] 工具契约")
+        check("暴露三个工具", set(t) == {"query_order", "cancel_order", "refund_order"},
+              str(sorted(t)))
+        check("query_order 无 user_id 参数",
+              "user_id" not in schema_of(t["query_order"]).get("properties", {}))
+        check("refund_order 无 approval_id 参数",
+              "approval_id" not in schema_of(t["refund_order"]).get("properties", {}))
 
-    print("\n[1] 查询")
-    r = parse(await query.ainvoke({"limit": 10}))
-    check("能查出本人全部订单", r.get("count") == 6, str(r.get("count")))
-    check("查询结果不含他人订单",
-          all(o["order_id"] != OTHERS for o in r.get("orders", [])))
+        query = t["query_order"]
+        cancel = t["cancel_order"]
+        refund = t["refund_order"]
 
-    r = parse(await query.ainvoke({"order_id": OTHERS}))
-    check("查他人订单返回 ORDER_NOT_FOUND", r.get("error_code") == "ORDER_NOT_FOUND", str(r))
+        print("\n[2] 查询")
+        r = parse(await query.ainvoke({}))
+        ids = {o["order_id"] for o in r.get("orders", [])}
+        check("只返回本人订单", OTHERS not in ids, str(ids))
+        check("返回 6 笔", r.get("count") == 6, str(r.get("count")))
 
-    print("\n[2] 取消")
-    r = parse(await query.ainvoke({"order_id": MINE}))
-    check("已支付订单可取消", r["orders"][0]["can_cancel"] is True)
+        r = parse(await query.ainvoke({"order_id": OTHERS}))
+        check("查他人订单报不存在", r.get("error_code") == "ORDER_NOT_FOUND", str(r))
 
-    r = parse(await cancel.ainvoke({"order_id": OTHERS}))
-    check("取消他人订单被拒绝", r.get("error_code") == "ORDER_NOT_FOUND", str(r))
+        r = parse(await query.ainvoke({"order_id": COMPLETED}))
+        o = (r.get("orders") or [{}])[0]
+        check("返回可退余额", o.get("refundable_balance") == "¥458.00",
+              str(o.get("refundable_balance")))
 
-    r = parse(await cancel.ainvoke({"order_id": MINE, "reason": "NO_LONGER_NEEDED"}))
-    check("取消本人已支付订单成功", r.get("ok") is True, str(r))
+        print("\n[3] 取消")
+        r = parse(await cancel.ainvoke({"order_id": OTHERS}))
+        check("取消他人订单被拒", r.get("error_code") == "ORDER_NOT_FOUND", str(r))
 
-    r = parse(await cancel.ainvoke({"order_id": MINE}))
-    check("重复取消被拒绝", r.get("error_code") == "ALREADY_CANCELLED", str(r))
+        r = parse(await cancel.ainvoke({"order_id": PAID, "reason": "NO_LONGER_NEEDED"}))
+        check("本人订单取消成功", r.get("ok") is True, str(r))
 
-    print("\n[3] 未发货退款（直接放款）")
-    r = parse(await refund.ainvoke({"order_id": "ORD20261101004"}))
-    check("未取消订单退款被拒绝", r.get("error_code") == "ORDER_NOT_CANCELLED", str(r))
+        r = parse(await cancel.ainvoke({"order_id": PAID}))
+        check("重复取消被拒", r.get("error_code") == "ALREADY_CANCELLED", str(r))
 
-    r = parse(await refund.ainvoke({"order_id": MINE_CANCELLED, "amount": 99999}))
-    check("超额退款被拒绝", r.get("error_code") == "AMOUNT_EXCEEDED", str(r))
+        print("\n[4] 未发货直接退款")
+        r = parse(await refund.ainvoke({"order_id": UNSHIPPED, "amount": 99999}))
+        check("超额退款被拒", r.get("error_code") == "AMOUNT_EXCEEDED", str(r))
 
-    r = parse(await refund.ainvoke({"order_id": MINE, "reason": "拍错了"}))
-    check("已取消订单退款成功", r.get("ok") is True, str(r))
-    check("未发货不走审批", r.get("approval") == "NOT_REQUIRED", str(r.get("approval")))
-    check("退款金额等于实付", r.get("order", {}).get("refund_amount") == "¥2,499.00",
-          str(r.get("order", {}).get("refund_amount")))
+        r = parse(await refund.ainvoke({"order_id": UNSHIPPED, "amount": 300, "reason": "拍错"}))
+        check("部分退款立即生效", r.get("result") == "REFUNDED", str(r))
+        check("累计已退 300", r.get("order", {}).get("refunded_amount") == "¥300.00",
+              str(r.get("order", {}).get("refunded_amount")))
 
-    r = parse(await refund.ainvoke({"order_id": MINE}))
-    check("重复退款被拒绝", r.get("error_code") == "ALREADY_REFUNDED", str(r))
+        r = parse(await refund.ainvoke({"order_id": UNSHIPPED, "reason": "退剩余"}))
+        check("退剩余全部", r.get("order", {}).get("refunded_amount") == "¥699.00", str(r))
+        check("退满后置为已退款", r.get("order", {}).get("status") == "REFUNDED", str(r))
 
-    print("\n[4] 已发货退款（人工审批）")
-    r = parse(await refund.ainvoke({"order_id": SHIPPED, "reason": "商品有破损"}))
-    check("已发货先返回需审批", r.get("error_code") == "MANUAL_APPROVAL_REQUIRED", str(r))
-    approval_id = r.get("approval_id")
-    check("返回审批凭证", bool(approval_id), str(r))
-    check("带出发货状态", r.get("shipping_state") == "SHIPPED", str(r.get("shipping_state")))
+        r = parse(await refund.ainvoke({"order_id": UNSHIPPED}))
+        check("已退完不能再退", r.get("error_code") == "ALREADY_REFUNDED", str(r))
 
-    q = parse(await query.ainvoke({"order_id": SHIPPED}))
-    check("审批前订单未退款", q["orders"][0]["status"] == "CANCELLED",
-          q["orders"][0]["status"])
-    check("查询侧标记需审批", q["orders"][0]["refund_needs_approval"] is True)
+        print("\n[5] 已发货 / 已签收 -> 提交申请")
+        r = parse(await refund.ainvoke({"order_id": SHIPPED, "amount": 500, "reason": "有杂音"}))
+        check("已发货走申请", r.get("result") == "PENDING", str(r))
+        check("返回排队位置", isinstance(r.get("queue_position"), int),
+              str(r.get("queue_position")))
+        check("申请阶段不改订单金额",
+              r.get("order", {}).get("refunded_amount") == "¥0.00",
+              str(r.get("order", {}).get("refunded_amount")))
 
-    r = parse(await refund.ainvoke({"order_id": SHIPPED, "approval_id": approval_id}))
-    check("审批通过后放款成功", r.get("ok") is True, str(r))
-    check("标记为人工审批通过", r.get("approval") == "APPROVED", str(r.get("approval")))
+        r2 = parse(await refund.ainvoke({"order_id": SHIPPED, "amount": 100}))
+        check("重复申请被拒", r2.get("error_code") == "PENDING_REFUND_EXISTS", str(r2))
 
-    r = parse(await refund.ainvoke({"order_id": SHIPPED, "approval_id": approval_id}))
-    check("同一审批单不能重复放款",
-          r.get("error_code") in {"ALREADY_REFUNDED", "INVALID_APPROVAL"}, str(r))
+        r3 = parse(await refund.ainvoke({"order_id": COMPLETED, "reason": "键帽松动"}))
+        check("已签收订单可申请", r3.get("result") == "PENDING", str(r3))
 
-    print("\n[5] 退款追踪")
-    from mcp_server import service as svc
+        print("\n[6] 商家审批（服务层，与 Web 后台同一入口）")
+        queue = service.pending_queue()
+        check("队列含三条申请", len(queue) == 3, str(len(queue)))
+        check("排队位置连续", [q["queue_position"] for q in queue] == [1, 2, 3],
+              str([q["queue_position"] for q in queue]))
 
-    traces = svc.list_refund_traces(order_id=MINE)
-    check("自动退款留下追踪记录", len(traces) == 1, str(len(traces)))
-    check("追踪记录退款原因", traces and traces[0]["reason"] == "拍错了",
-          str(traces[0]["reason"] if traces else None))
-    check("追踪记录审批方式为 AUTO", traces and traces[0]["approval_mode"] == "AUTO")
+        rid = r.get("refund_id")
+        out = service.approve_refund(rid, MERCHANT, note="核实后同意")
+        check("审批通过", out.get("ok") is True, str(out))
+        check("订单累计已退 500",
+              out.get("order", {}).get("refunded_amount") == "¥500.00",
+              str(out.get("order", {}).get("refunded_amount")))
 
-    traces = svc.list_refund_traces(order_id=SHIPPED)
-    check("审批退款留下追踪记录", len(traces) == 1, str(len(traces)))
-    check("追踪记录审批方式为 MANUAL", traces and traces[0]["approval_mode"] == "MANUAL")
-    check("追踪记录审批状态 APPROVED", traces and traces[0]["approval_status"] == "APPROVED")
-    check("追踪记录退款原因", traces and traces[0]["reason"] == "商品有破损",
-          str(traces[0]["reason"] if traces else None))
-    check("追踪记录审批人", bool(traces and traces[0]["approver"]))
+        r4 = parse(await refund.ainvoke({"order_id": SHIPPED, "amount": 9999}))
+        check("审批后再申请超额被拒", r4.get("error_code") == "AMOUNT_EXCEEDED", str(r4))
 
-    print("\n[6] 状态一致性")
-    r = parse(await query.ainvoke({"order_id": MINE}))
-    order = r["orders"][0]
-    check("最终状态为已退款", order["status"] == "REFUNDED", order["status"])
-    check("终态下不可再取消/退款",
-          order["can_cancel"] is False and order["can_refund"] is False)
+        print("\n[7] 驳回锁定与解锁")
+        r5 = parse(await refund.ainvoke({"order_id": SHIPPED, "amount": 100}))
+        rid2 = r5.get("refund_id")
+        check("可再次提交小额申请", bool(rid2), str(r5))
 
-    print(f"\n{'=' * 42}\n通过 {passed} 项，失败 {failed} 项")
-    sys.exit(1 if failed else 0)
+        service.reject_refund(rid2, MERCHANT, note="证据不足")
+        r6 = parse(await refund.ainvoke({"order_id": SHIPPED, "amount": 100}))
+        check("驳回后订单锁定", r6.get("error_code") == "REFUND_LOCKED_AFTER_REJECT", str(r6))
+
+        service.unlock_order(SHIPPED, MERCHANT, note="复核通过")
+        r7 = parse(await refund.ainvoke({"order_id": SHIPPED, "amount": 100}))
+        check("解锁后可重新申请", r7.get("result") == "PENDING", str(r7))
+
+    print("\n" + "=" * 42)
+    print(f"通过 {passed} 项，失败 {failed} 项")
+    if failed:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

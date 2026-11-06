@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}待审批 · 退款审批后台{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>待审批队列</h2>
+    <span class="panel-sub">按提交时间排队，先到先审</span>
+  </div>
+
+  {% if not items %}
+  <div class="empty">
+    <div class="empty-icon"></div>
+    <p>队列已清空，没有待处理的退款申请</p>
+  </div>
+  {% else %}
+
+  <div class="queue">
+    {% for item in items %}
+    <article class="qcard">
+      <div class="qhead">
+        <span class="qpos">#{{ item.queue_position }}</span>
+        <div class="qtitle">
+          <div class="qline1">
+            <strong>{{ item.item_name }}</strong>
+            <span class="tag">{{ item.status_label }}</span>
+          </div>
+          <div class="qline2">
+            {{ item.user_name }} · {{ item.order_id }} · 申请编号 {{ item.refund_id }}
+          </div>
+        </div>
+        <div class="qtime">
+          <div>{{ item.waiting }}</div>
+          <div class="qtime-sub">{{ item.created_at }}</div>
+        </div>
+      </div>
+
+      <div class="qbody">
+        <div class="money">
+          <div class="mcell">
+            <span class="mlabel">订单实付</span>
+            <span class="mvalue">{{ item.order_amount }}</span>
+          </div>
+          <div class="mcell">
+            <span class="mlabel">已退</span>
+            <span class="mvalue">{{ item.order_refunded }}</span>
+          </div>
+          <div class="mcell highlight">
+            <span class="mlabel">本次申请</span>
+            <span class="mvalue">{{ item.amount }}</span>
+          </div>
+          <div class="mcell">
+            <span class="mlabel">退后余额</span>
+            <span class="mvalue">{{ item.balance_after }}</span>
+          </div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress">
+            <div class="bar done" style="width: {{ (item.order_refunded_cents / item.order_amount_cents * 100) | round(2) }}%"></div>
+            <div class="bar pending" style="width: {{ (item.amount_cents / item.order_amount_cents * 100) | round(2) }}%"></div>
+          </div>
+          <div class="progress-legend">
+            <span><i class="dot done"></i>已退 {{ (item.order_refunded_cents / item.order_amount_cents * 100) | round(1) }}%</span>
+            <span><i class="dot pending"></i>本次 {{ (item.amount_cents / item.order_amount_cents * 100) | round(1) }}%</span>
+          </div>
+        </div>
+
+        <div class="reason">
+          <span class="rlabel">退款原因</span>
+          <span class="rtext">{{ item.reason }}</span>
+        </div>
+
+        <div class="ship">
+          {% if item.shipping_state == 'DELIVERED' %}已签收{% elif item.shipping_state == 'SHIPPED' %}已发货 · 运输中{% else %}未发货{% endif %}
+          · {{ item.mode == 'MANUAL' and '需人工审批' or '自动放款' }}
+        </div>
+      </div>
+
+      <div class="qfoot">
+        <form method="post" action="/refunds/{{ item.refund_id }}/approve" class="inline-form">
+          <input name="note" placeholder="通过备注（可选）" maxlength="80">
+          <button type="submit" class="btn primary">通过放款</button>
+        </form>
+        <form method="post" action="/refunds/{{ item.refund_id }}/reject" class="inline-form reject-form">
+          <input name="note" placeholder="驳回原因（必填）" maxlength="80" required>
+          <button type="submit" class="btn danger">驳回申请</button>
+        </form>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

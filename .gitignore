@@ -4,10 +4,16 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/*.db
+
+# 运行时数据（由 python -m data.seed 生成）
+data/*.json
+data/*.lock
 
 # 保留示例配置
 !.env.example
 
 # 本地工作区数据
 .workbuddy/
+
+# 界面预览快照
+.preview/

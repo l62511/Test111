@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>登录 · 退款审批后台</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-body">
+<div class="login-card">
+  <div class="brand">
+    <span class="logo"></span>
+    <div>
+      <div class="brand-name">退款审批后台</div>
+      <div class="brand-sub">请使用商家账号登录</div>
+    </div>
+  </div>
+
+  {% if error %}<div class="flash err">{{ error }}</div>{% endif %}
+
+  <form method="post" action="/login">
+    <label>
+      账号
+      <input name="username" autocomplete="username" autofocus required>
+    </label>
+    <label>
+      密码
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit" class="btn primary block">登录</button>
+  </form>
+
+  <p class="hint">演示账号 merchant / admin123</p>
+</div>
+</body>
+</html>

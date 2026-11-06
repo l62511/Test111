@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}退款审批后台{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo"></span>
+      <div>
+        <div class="brand-name">退款审批后台</div>
+        <div class="brand-sub">订单客服 Agent · 商家端</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="/queue" class="{% if page == 'queue' %}on{% endif %}">
+        待审批{% if stats.pending_count %}<span class="badge">{{ stats.pending_count }}</span>{% endif %}
+      </a>
+      <a href="/refunds" class="{% if page == 'refunds' %}on{% endif %}">退款记录</a>
+      <a href="/orders" class="{% if page == 'orders' %}on{% endif %}">订单</a>
+    </nav>
+    <div class="who">
+      <span class="avatar">{{ user.name[:1] }}</span>
+      <span>{{ user.name }}</span>
+      <a href="/logout" class="logout">退出</a>
+    </div>
+  </header>
+
+  <section class="statbar">
+    <div class="stat">
+      <div class="stat-label">待审批</div>
+      <div class="stat-value">{{ stats.pending_count }}<span class="unit">笔</span></div>
+      <div class="stat-hint">合计 {{ stats.pending_amount }}</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">今日已通过</div>
+      <div class="stat-value">{{ stats.approved_today }}<span class="unit">笔</span></div>
+      <div class="stat-hint">含自动放款</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">累计驳回</div>
+      <div class="stat-value">{{ stats.rejected_count }}<span class="unit">笔</span></div>
+      <div class="stat-hint">驳回后订单锁定</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">锁定订单</div>
+      <div class="stat-value">{{ stats.locked_count }}<span class="unit">笔</span></div>
+      <div class="stat-hint">需人工解锁</div>
+    </div>
+  </section>
+
+  {% if msg %}
+  <div class="flash {{ level }}">{{ msg }}</div>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>
