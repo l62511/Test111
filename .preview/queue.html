@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>待审批 · 退款审批后台</title>
+  <style>
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --line: #e5e7eb;
+  --line-soft: #f0f1f3;
+  --text: #1f2328;
+  --text-2: #656d76;
+  --text-3: #8b949e;
+  --accent: #2563eb;
+  --accent-soft: #eff4ff;
+  --ok: #15803d;
+  --ok-soft: #eaf6ef;
+  --warn: #b45309;
+  --warn-soft: #fdf4e7;
+  --err: #b91c1c;
+  --err-soft: #fdecec;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+               "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.shell { max-width: 1120px; margin: 0 auto; padding: 20px 24px 64px; }
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex; align-items: center; gap: 28px;
+  padding: 14px 20px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  margin-bottom: 16px;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.logo {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+  position: relative;
+}
+.logo::after {
+  content: ""; position: absolute; inset: 9px;
+  border: 2px solid #fff; border-radius: 3px; border-top-color: transparent;
+}
+.brand-name { font-weight: 600; font-size: 14px; line-height: 1.3; }
+.brand-sub { font-size: 12px; color: var(--text-3); line-height: 1.3; }
+
+.nav { display: flex; gap: 4px; margin-left: 12px; }
+.nav a {
+  color: var(--text-2); text-decoration: none; padding: 6px 12px;
+  border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px;
+}
+.nav a:hover { background: var(--line-soft); color: var(--text); }
+.nav a.on { background: var(--accent-soft); color: var(--accent); font-weight: 500; }
+.badge {
+  background: var(--accent); color: #fff; font-size: 11px;
+  padding: 0 6px; border-radius: 9px; line-height: 17px;
+}
+
+.who { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.avatar {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft);
+  color: var(--accent); display: grid; place-items: center; font-size: 12px; font-weight: 600;
+}
+.logout { color: var(--text-3); text-decoration: none; margin-left: 6px; font-size: 12px; }
+.logout:hover { color: var(--err); }
+
+/* ---------- 统计 ---------- */
+.statbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+.stat {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.stat-label { font-size: 12px; color: var(--text-3); }
+.stat-value { font-size: 24px; font-weight: 600; letter-spacing: -0.5px; margin: 2px 0 1px; }
+.stat-value .unit { font-size: 12px; font-weight: 400; color: var(--text-3); margin-left: 3px; }
+.stat-hint { font-size: 12px; color: var(--text-3); }
+
+/* ---------- 提示 ---------- */
+.flash {
+  padding: 10px 14px; border-radius: 8px; margin-bottom: 16px;
+  font-size: 13px; border: 1px solid transparent;
+}
+.flash.ok { background: var(--ok-soft); color: var(--ok); border-color: #cfe9d9; }
+.flash.warn { background: var(--warn-soft); color: var(--warn); border-color: #f2dfc0; }
+.flash.err { background: var(--err-soft); color: var(--err); border-color: #f5cfcf; }
+
+/* ---------- 面板 ---------- */
+.panel {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow: hidden;
+}
+.panel-head {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 16px 20px; border-bottom: 1px solid var(--line-soft);
+}
+.panel-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.panel-sub { font-size: 12px; color: var(--text-3); }
+.filters { margin-left: auto; display: flex; gap: 8px; }
+.filters input, .filters select {
+  border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px;
+  font-size: 13px; background: var(--surface); color: var(--text);
+}
+
+/* ---------- 空态 ---------- */
+.empty { padding: 56px 20px; text-align: center; color: var(--text-3); }
+.empty-icon {
+  width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 50%;
+  border: 2px dashed var(--line); position: relative;
+}
+.empty-icon::after {
+  content: ""; position: absolute; left: 12px; right: 12px; top: 21px;
+  height: 2px; background: var(--line);
+}
+
+/* ---------- 队列卡片 ---------- */
+.queue { display: flex; flex-direction: column; }
+.qcard { border-bottom: 1px solid var(--line-soft); padding: 16px 20px; }
+.qcard:last-child { border-bottom: 0; }
+.qcard:hover { background: #fcfcfd; }
+
+.qhead { display: flex; align-items: flex-start; gap: 12px; }
+.qpos {
+  flex: none; min-width: 32px; height: 24px; border-radius: 6px;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: 12px; font-weight: 600; display: grid; place-items: center;
+}
+.qtitle { flex: 1; min-width: 0; }
+.qline1 { display: flex; align-items: center; gap: 8px; }
+.qline1 strong { font-size: 14px; font-weight: 600; }
+.qline2 { font-size: 12px; color: var(--text-3); margin-top: 1px; }
+.qtime { text-align: right; font-size: 13px; color: var(--text-2); flex: none; }
+.qtime-sub { font-size: 11px; color: var(--text-3); }
+
+.tag {
+  font-size: 11px; padding: 1px 7px; border-radius: 5px;
+  background: var(--warn-soft); color: var(--warn);
+}
+
+.qbody { margin: 12px 0 0 44px; }
+.money {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 1px; background: var(--line-soft);
+  border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden;
+}
+.mcell { background: var(--surface); padding: 9px 12px; }
+.mcell.highlight { background: var(--accent-soft); }
+.mlabel { display: block; font-size: 11px; color: var(--text-3); }
+.mvalue { font-size: 15px; font-weight: 600; letter-spacing: -0.2px; }
+.mcell.highlight .mvalue { color: var(--accent); }
+
+.progress-wrap { margin-top: 12px; }
+.progress {
+  height: 8px; border-radius: 5px; background: var(--line-soft);
+  display: flex; overflow: hidden;
+}
+.bar.done { background: #34a853; }
+.bar.pending { background: #f0b429; }
+.progress-legend {
+  display: flex; gap: 16px; margin-top: 6px;
+  font-size: 11px; color: var(--text-3);
+}
+.dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 2px;
+  margin-right: 4px; vertical-align: 1px;
+}
+.dot.done { background: #34a853; }
+.dot.pending { background: #f0b429; }
+
+.reason { margin-top: 12px; display: flex; gap: 8px; font-size: 13px; }
+.rlabel { color: var(--text-3); flex: none; font-size: 12px; line-height: 1.7; }
+.rtext { color: var(--text); }
+
+.ship { margin-top: 6px; font-size: 12px; color: var(--text-3); }
+
+.qfoot {
+  margin: 14px 0 0 44px; padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex; gap: 12px; flex-wrap: wrap;
+}
+.inline-form { display: flex; gap: 8px; align-items: center; }
+.inline-form input {
+  border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px;
+  font-size: 13px; width: 180px; background: var(--surface); color: var(--text);
+}
+.inline-form input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+/* ---------- 按钮 ---------- */
+.btn {
+  border: 1px solid transparent; border-radius: 7px; padding: 6px 14px;
+  font-size: 13px; cursor: pointer; font-family: inherit;
+  background: var(--surface); color: var(--text);
+}
+.btn.primary { background: var(--accent); color: #fff; }
+.btn.primary:hover { background: #1d4ed8; }
+.btn.danger { background: var(--err); color: #fff; }
+.btn.danger:hover { background: #991b1b; }
+.btn.ghost { border-color: var(--line); color: var(--text-2); }
+.btn.ghost:hover { background: var(--line-soft); }
+.btn.small { padding: 4px 10px; font-size: 12px; }
+.btn.block { width: 100%; margin-top: 6px; padding: 9px; }
+
+/* ---------- 表格 ---------- */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th {
+  text-align: left; font-weight: 500; color: var(--text-3); font-size: 12px;
+  padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap;
+  background: #fbfcfd;
+}
+.table td { padding: 10px 12px; border-bottom: 1px solid var(--line-soft); }
+.table tr:last-child td { border-bottom: 0; }
+.table tr:hover td { background: #fcfcfd; }
+.table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table .strong { font-weight: 600; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.mini { font-size: 11px; color: var(--text-3); }
+.ellipsis { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reason-cell { max-width: 180px; color: var(--text-2); }
+.locked-row td { background: #fffbf5; }
+
+.status {
+  font-size: 11px; padding: 2px 8px; border-radius: 5px;
+  background: var(--line-soft); color: var(--text-2); white-space: nowrap;
+}
+.status.pending { background: var(--warn-soft); color: var(--warn); }
+.status.approved { background: var(--ok-soft); color: var(--ok); }
+.status.rejected { background: var(--err-soft); color: var(--err); }
+.status.paid { background: var(--accent-soft); color: var(--accent); }
+.status.cancelled, .status.completed { background: var(--line-soft); color: var(--text-2); }
+.status.refunded { background: var(--ok-soft); color: var(--ok); }
+.status.created { background: #f4f0ff; color: #6d28d9; }
+
+/* ---------- 登录 ---------- */
+.login-body {
+  min-height: 100vh; display: grid; place-items: center;
+  background: var(--bg); margin: 0; padding: 20px;
+}
+.login-card {
+  width: 100%; max-width: 360px; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 14px; padding: 28px;
+}
+.login-card .brand { margin-bottom: 20px; }
+.login-card form { display: flex; flex-direction: column; gap: 14px; }
+.login-card label { font-size: 13px; color: var(--text-2); display: block; }
+.login-card input {
+  width: 100%; margin-top: 5px; padding: 9px 12px; font-size: 14px;
+  border: 1px solid var(--line); border-radius: 8px; font-family: inherit;
+  background: var(--surface); color: var(--text);
+}
+.login-card input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.hint { text-align: center; font-size: 12px; color: var(--text-3); margin: 16px 0 0; }
+
+@media (max-width: 860px) {
+  .statbar { grid-template-columns: repeat(2, 1fr); }
+  .money { grid-template-columns: repeat(2, 1fr); }
+  .nav { margin-left: 0; }
+  .topbar { flex-wrap: wrap; gap: 12px; }
+}
+
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo"></span>
+      <div>
+        <div class="brand-name">退款审批后台</div>
+        <div class="brand-sub">订单客服 Agent · 商家端</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="/queue" class="on">
+        待审批<span class="badge">1</span>
+      </a>
+      <a href="/refunds" class="">退款记录</a>
+      <a href="/orders" class="">订单</a>
+    </nav>
+    <div class="who">
+      <span class="avatar">陈</span>
+      <span>陈明</span>
+      <a href="/logout" class="logout">退出</a>
+    </div>
+  </header>
+
+  <section class="statbar">
+    <div class="stat">
+      <div class="stat-label">待审批</div>
+      <div class="stat-value">1<span class="unit">笔</span></div>
+      <div class="stat-hint">合计 ¥500.00</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">今日已通过</div>
+      <div class="stat-value">0<span class="unit">笔</span></div>
+      <div class="stat-hint">含自动放款</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">累计驳回</div>
+      <div class="stat-value">0<span class="unit">笔</span></div>
+      <div class="stat-hint">驳回后订单锁定</div>
+    </div>
+    <div class="stat">
+      <div class="stat-label">锁定订单</div>
+      <div class="stat-value">0<span class="unit">笔</span></div>
+      <div class="stat-hint">需人工解锁</div>
+    </div>
+  </section>
+
+  
+
+  
+<section class="panel">
+  <div class="panel-head">
+    <h2>待审批队列</h2>
+    <span class="panel-sub">按提交时间排队，先到先审</span>
+  </div>
+
+  
+
+  <div class="queue">
+    
+    <article class="qcard">
+      <div class="qhead">
+        <span class="qpos">#1</span>
+        <div class="qtitle">
+          <div class="qline1">
+            <strong>Apple iPad Air 11 英寸 (M3)</strong>
+            <span class="tag">待审批</span>
+          </div>
+          <div class="qline2">
+            李娜 · ORD20261010007 · 申请编号 RF20261106093000E5F6
+          </div>
+        </div>
+        <div class="qtime">
+          <div>2 小时 27 分</div>
+          <div class="qtime-sub">2026-11-06 09:30:00</div>
+        </div>
+      </div>
+
+      <div class="qbody">
+        <div class="money">
+          <div class="mcell">
+            <span class="mlabel">订单实付</span>
+            <span class="mvalue">¥4,799.00</span>
+          </div>
+          <div class="mcell">
+            <span class="mlabel">已退</span>
+            <span class="mvalue">¥1,000.00</span>
+          </div>
+          <div class="mcell highlight">
+            <span class="mlabel">本次申请</span>
+            <span class="mvalue">¥500.00</span>
+          </div>
+          <div class="mcell">
+            <span class="mlabel">退后余额</span>
+            <span class="mvalue">¥3,299.00</span>
+          </div>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress">
+            <div class="bar done" style="width: 20.84%"></div>
+            <div class="bar pending" style="width: 10.42%"></div>
+          </div>
+          <div class="progress-legend">
+            <span><i class="dot done"></i>已退 20.8%</span>
+            <span><i class="dot pending"></i>本次 10.4%</span>
+          </div>
+        </div>
+
+        <div class="reason">
+          <span class="rlabel">退款原因</span>
+          <span class="rtext">触控偶尔失灵，希望再退 500 元</span>
+        </div>
+
+        <div class="ship">
+          已签收
+          · 需人工审批
+        </div>
+      </div>
+
+      <div class="qfoot">
+        <form method="post" action="/refunds/RF20261106093000E5F6/approve" class="inline-form">
+          <input name="note" placeholder="通过备注（可选）" maxlength="80">
+          <button type="submit" class="btn primary">通过放款</button>
+        </form>
+        <form method="post" action="/refunds/RF20261106093000E5F6/reject" class="inline-form reject-form">
+          <input name="note" placeholder="驳回原因（必填）" maxlength="80" required>
+          <button type="submit" class="btn danger">驳回申请</button>
+        </form>
+      </div>
+    </article>
+    
+  </div>
+  
+</section>
+
+</div>
+</body>
+</html>
