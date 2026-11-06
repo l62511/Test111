@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "sessions": {
+    "demo-web-u_1002": {
+      "session_id": "demo-web-u_1002",
+      "user_id": "u_1002",
+      "user_name": "李娜",
+      "channel": "WEB",
+      "seq": 1,
+      "created_at": "2026-11-06 09:35:00",
+      "updated_at": "2026-11-06 09:35:00",
+      "title": "我这单退款到哪一步了",
+      "messages": [
+        {
+          "role": "user",
+          "content": "我这单退款到哪一步了？ORD20261010007",
+          "steps": [],
+          "ts": "2026-11-06 09:35:00"
+        },
+        {
+          "role": "assistant",
+          "content": "李娜您好，iPad 这笔目前有一张 ¥500 的退款申请在排队，是第 1 位，还在等商家审核。这单之前已经退过 ¥1,000，实付 ¥4,799，所以最多还能退 ¥3,799。",
+          "steps": [
+            {
+              "type": "tool_call",
+              "name": "query_after_sales",
+              "args": {
+                "order_id": "ORD20261010007"
+              },
+              "text": "{\"order_id\": \"ORD20261010007\"}"
+            },
+            {
+              "type": "tool_result",
+              "name": "query_after_sales",
+              "status": "OK",
+              "text": "共 3 条售后记录：已通过 1 笔（合计 ¥1,000.00）、待审批 1 笔、已驳回 0 笔",
+              "summary": "共 3 条售后记录",
+              "raw": "{\"ok\": true, \"count\": 3}"
+            },
+            {
+              "type": "reply",
+              "text": "李娜您好，iPad 这笔目前有一张 ¥500 的退款申请在排队，是第 1 位，还在等商家审核。这单之前已经退过 ¥1,000，实付 ¥4,799，所以最多还能退 ¥3,799。"
+            }
+          ],
+          "ts": "2026-11-06 09:35:04"
+        }
+      ]
+    }
+  },
+  "seq": 1
+}

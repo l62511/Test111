@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}售后分析 · 订单客服 Agent 后台{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>商品售后分析</h2>
+    <span class="panel-sub">{{ d.period.label }} · 退款率按订单数计，金额按已放款统计</span>
+    <div class="seg">
+      {% for key, label in [('WEEK','本周'), ('MONTH','本月'), ('ALL','全部')] %}
+      <a href="/analytics?period={{ key }}" class="seg-item {% if period == key %}on{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi">
+      <div class="k-label">退款金额</div>
+      <div class="k-value">{{ d.totals.refund_amount }}</div>
+      <div class="k-hint">{{ d.totals.refund_count }} 笔已放款 · 均值 {{ d.totals.avg_refund }}</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">退款率</div>
+      <div class="k-value">{{ d.totals.refund_rate }}<span class="unit">%</span></div>
+      <div class="k-hint">{{ d.totals.refunded_order_count }} / {{ d.totals.order_count }} 单</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">金额占比</div>
+      <div class="k-value">{{ d.totals.amount_rate }}<span class="unit">%</span></div>
+      <div class="k-hint">GMV {{ d.totals.gmv }}</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">待审批</div>
+      <div class="k-value">{{ d.totals.pending_count }}<span class="unit">笔</span></div>
+      <div class="k-hint">合计 {{ d.totals.pending_amount }}</div>
+    </div>
+    <div class="kpi">
+      <div class="k-label">自动 / 人工</div>
+      <div class="k-value">{{ d.human_vs_auto.auto }}<span class="unit">/</span>{{ d.human_vs_auto.human }}</div>
+      <div class="k-hint">低风险自动放款笔数 / 人工放款</div>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>商品退款排行</h3>
+      {% if d.by_product %}
+      <ol class="rank">
+        {% for p in d.by_product %}
+        <li>
+          <span class="rk">{{ p.rank }}</span>
+          <div class="rk-body">
+            <div class="rk-top">
+              <span class="rk-name">{{ p.item_name }}</span>
+              <span class="rk-amt">{{ p.amount }}</span>
+            </div>
+            <div class="rk-bar">
+              <div class="rk-fill" style="width: {{ (p.amount_cents / d.by_product[0].amount_cents * 100) | round(1) }}%"></div>
+            </div>
+            <div class="rk-meta">
+              {{ p.count }} 笔 · {{ p.orders }} 单
+              {% if p.rate is not none %}· 该商品退款率 {{ p.rate }}%{% endif %}
+            </div>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="muted">这段时间没有已放款的退款。</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>退款原因分布</h3>
+      {% if d.by_issue %}
+      <ul class="dist">
+        {% for i in d.by_issue %}
+        <li>
+          <span class="d-label">{{ i.label }}</span>
+          <div class="d-bar"><div class="d-fill" style="width: {{ i.share }}%"></div></div>
+          <span class="d-val">{{ i.count }} 笔 · {{ i.share }}%</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted">暂无数据。</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>近 14 天退款金额</h3>
+    <div class="trend">
+      {% for t in d.trend %}
+      <div class="t-col" title="{{ t.date }} · {{ t.count }} 笔">
+        <div class="t-bar" style="height: {{ ((t.amount_cents / peak) * 100) | round(1) }}%"></div>
+        <div class="t-label">{{ t.label if loop.index0 % 2 == 0 else '' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>异常订单 <span class="muted small">{{ d.anomalies|length }} 条</span></h3>
+    {% if d.anomalies %}
+    <table class="tbl">
+      <thead><tr><th>类型</th><th>等级</th><th>订单 / 对象</th><th>商品</th><th>依据</th></tr></thead>
+      <tbody>
+      {% for a in d.anomalies %}
+        <tr>
+          <td><span class="tag">{{ a.label }}</span></td>
+          <td><span class="pill risk {{ a.level|lower }}">{{ '高' if a.level == 'HIGH' else '中' }}</span></td>
+          <td class="mono">{{ a.order_id }}</td>
+          <td>{{ a.item_name }}</td>
+          <td class="muted">{{ a.detail }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty"><div class="empty-icon"></div><p>没有发现异常订单</p></div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

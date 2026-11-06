@@ -1,21 +1,115 @@
 {
   "schema_version": 1,
   "refunds": {
+    "RF20261016112100B0C1": {
+      "refund_id": "RF20261016112100B0C1",
+      "order_id": "ORD20261016013",
+      "user_id": "u_1001",
+      "user_name": "张伟",
+      "amount_cents": 15900,
+      "requested_cents": null,
+      "issue_type": "NO_LONGER_NEEDED",
+      "reason": "拍错了，取消后直接退",
+      "status": "APPROVED",
+      "mode": "AUTO",
+      "seq": 1,
+      "created_at": "2026-10-16 11:20:40",
+      "reviewed_at": "2026-10-16 11:20:40",
+      "reviewer_id": "system",
+      "reviewer_name": "系统自动放款",
+      "review_note": "规则引擎自动放款，无需人工审批",
+      "decision": {
+        "decision": "AUTO_APPROVE",
+        "decision_label": "自动放款",
+        "risk_level": "LOW",
+        "risk_label": "低风险",
+        "risk_score": 0,
+        "priority": "P2",
+        "amount_reason": "用户未指定金额，按可退余额全额退",
+        "summary": "自动放款（低风险，风险分 0）；无风险项命中",
+        "rules": [
+          {
+            "id": "R10",
+            "name": "未发货",
+            "delta": -35,
+            "detail": "订单未发货，不涉及退货验货，资金风险最低"
+          },
+          {
+            "id": "R18",
+            "name": "首次售后",
+            "delta": -10,
+            "detail": "该用户此前没有退款记录"
+          }
+        ],
+        "needs_evidence": false
+      },
+      "review_history": []
+    },
     "RF20260925163044A1B2": {
       "refund_id": "RF20260925163044A1B2",
       "order_id": "ORD20260920003",
       "user_id": "u_1001",
       "user_name": "张伟",
       "amount_cents": 189900,
-      "reason": "商品与描述不符，申请退货退款",
+      "requested_cents": null,
+      "issue_type": "NOT_AS_DESCRIBED",
+      "reason": "降噪效果与页面描述不符，申请退货退款",
       "status": "APPROVED",
       "mode": "MANUAL",
-      "seq": 1,
+      "seq": 2,
       "created_at": "2026-09-24 09:05:00",
       "reviewed_at": "2026-09-25 16:30:44",
       "reviewer_id": "m_2001",
       "reviewer_name": "陈明",
-      "review_note": "已核验退货入库"
+      "review_note": "已核验退货入库",
+      "decision": {
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "HIGH",
+        "risk_label": "高风险",
+        "risk_score": 55,
+        "priority": "P0",
+        "amount_reason": "用户未指定金额，按可退余额全额退",
+        "summary": "转人工审核（高风险，风险分 55）；主因：已签收、高价值订单",
+        "rules": [
+          {
+            "id": "R12",
+            "name": "已签收",
+            "delta": 20,
+            "detail": "已签收，需核验退货入库或凭证"
+          },
+          {
+            "id": "R13",
+            "name": "高价值订单",
+            "delta": 20,
+            "detail": "实付 ¥1,899.00，达高价值阈值"
+          },
+          {
+            "id": "R21",
+            "name": "需凭证类问题",
+            "delta": 5,
+            "detail": "与描述不符，人工需核验图片或检测报告"
+          },
+          {
+            "id": "R23",
+            "name": "已签收后全额退",
+            "delta": 15,
+            "detail": "已签收且退全部余额，需确认退货实物"
+          }
+        ],
+        "needs_evidence": true
+      },
+      "review_history": [
+        {
+          "action": "APPROVE",
+          "action_label": "审批通过",
+          "at": "2026-09-25 16:30:44",
+          "by_id": "m_2001",
+          "by": "陈明",
+          "note": "已核验退货入库",
+          "amount_cents": 189900
+        }
+      ]
     },
     "RF20261028110000C3D4": {
       "refund_id": "RF20261028110000C3D4",
@@ -23,15 +117,299 @@
       "user_id": "u_1002",
       "user_name": "李娜",
       "amount_cents": 100000,
+      "requested_cents": 100000,
+      "issue_type": "NOT_AS_DESCRIBED",
       "reason": "屏幕有细微划痕，协商部分补偿",
       "status": "APPROVED",
       "mode": "MANUAL",
-      "seq": 2,
+      "seq": 3,
       "created_at": "2026-10-27 20:00:00",
       "reviewed_at": "2026-10-28 11:00:00",
       "reviewer_id": "m_2001",
       "reviewer_name": "陈明",
-      "review_note": "协商退 1000 元"
+      "review_note": "协商退 1000 元",
+      "decision": {
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "MEDIUM",
+        "risk_label": "中风险",
+        "risk_score": 45,
+        "priority": "P1",
+        "amount_reason": "用户主张部分退款，按主张金额执行，剩余 ¥3,799.00 仍可退",
+        "summary": "转人工审核（中风险，风险分 45）；主因：已签收、高价值订单",
+        "rules": [
+          {
+            "id": "R12",
+            "name": "已签收",
+            "delta": 20,
+            "detail": "已签收，需核验退货入库或凭证"
+          },
+          {
+            "id": "R13",
+            "name": "高价值订单",
+            "delta": 20,
+            "detail": "实付 ¥4,799.00，达高价值阈值"
+          },
+          {
+            "id": "R21",
+            "name": "需凭证类问题",
+            "delta": 5,
+            "detail": "与描述不符，人工需核验图片或检测报告"
+          }
+        ],
+        "needs_evidence": true
+      },
+      "review_history": [
+        {
+          "action": "APPROVE",
+          "action_label": "审批通过",
+          "at": "2026-10-28 11:00:00",
+          "by_id": "m_2001",
+          "by": "陈明",
+          "note": "协商退 1000 元",
+          "amount_cents": 100000
+        }
+      ]
+    },
+    "RF20261004093000D5E6": {
+      "refund_id": "RF20261004093000D5E6",
+      "order_id": "ORD20260928010",
+      "user_id": "u_1002",
+      "user_name": "李娜",
+      "amount_cents": 89900,
+      "requested_cents": null,
+      "issue_type": "DAMAGED",
+      "reason": "收到时玻璃壶身有裂纹，无法使用",
+      "status": "APPROVED",
+      "mode": "MANUAL",
+      "seq": 4,
+      "created_at": "2026-10-03 09:10:00",
+      "reviewed_at": "2026-10-04 09:30:00",
+      "reviewer_id": "m_2001",
+      "reviewer_name": "陈明",
+      "review_note": "照片确认破损，全额退款",
+      "decision": {
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "HIGH",
+        "risk_label": "高风险",
+        "risk_score": 35,
+        "priority": "P0",
+        "amount_reason": "用户未指定金额，按可退余额全额退",
+        "summary": "转人工审核（高风险，风险分 35）；主因：已签收、已签收后全额退",
+        "rules": [
+          {
+            "id": "R12",
+            "name": "已签收",
+            "delta": 20,
+            "detail": "已签收，需核验退货入库或凭证"
+          },
+          {
+            "id": "R21",
+            "name": "需凭证类问题",
+            "delta": 5,
+            "detail": "商品破损，人工需核验图片或检测报告"
+          },
+          {
+            "id": "R23",
+            "name": "已签收后全额退",
+            "delta": 15,
+            "detail": "已签收且退全部余额，需确认退货实物"
+          }
+        ],
+        "needs_evidence": true
+      },
+      "review_history": [
+        {
+          "action": "APPROVE",
+          "action_label": "审批通过",
+          "at": "2026-10-04 09:30:00",
+          "by_id": "m_2001",
+          "by": "陈明",
+          "note": "照片确认破损，全额退款",
+          "amount_cents": 89900
+        }
+      ]
+    },
+    "RF20261024100000F7A8": {
+      "refund_id": "RF20261024100000F7A8",
+      "order_id": "ORD20261005012",
+      "user_id": "u_1003",
+      "user_name": "王强",
+      "amount_cents": 50000,
+      "requested_cents": 50000,
+      "issue_type": "QUALITY",
+      "reason": "开机有异响，接受部分补偿",
+      "status": "APPROVED",
+      "mode": "MANUAL",
+      "seq": 5,
+      "created_at": "2026-10-23 10:00:00",
+      "reviewed_at": "2026-10-24 10:00:00",
+      "reviewer_id": "m_2001",
+      "reviewer_name": "陈明",
+      "review_note": "客户接受补偿方案",
+      "decision": {
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "MEDIUM",
+        "risk_label": "中风险",
+        "risk_score": 45,
+        "priority": "P1",
+        "amount_reason": "用户主张部分退款，按主张金额执行，剩余 ¥2,799.00 仍可退",
+        "summary": "转人工审核（中风险，风险分 45）；主因：已签收、高价值订单",
+        "rules": [
+          {
+            "id": "R12",
+            "name": "已签收",
+            "delta": 20,
+            "detail": "已签收，需核验退货入库或凭证"
+          },
+          {
+            "id": "R13",
+            "name": "高价值订单",
+            "delta": 20,
+            "detail": "实付 ¥3,299.00，达高价值阈值"
+          },
+          {
+            "id": "R21",
+            "name": "需凭证类问题",
+            "delta": 5,
+            "detail": "质量问题，人工需核验图片或检测报告"
+          }
+        ],
+        "needs_evidence": true
+      },
+      "review_history": [
+        {
+          "action": "APPROVE",
+          "action_label": "审批通过",
+          "at": "2026-10-24 10:00:00",
+          "by_id": "m_2001",
+          "by": "陈明",
+          "note": "客户接受补偿方案",
+          "amount_cents": 50000
+        }
+      ]
+    },
+    "RF20261025100000G9B1": {
+      "refund_id": "RF20261025100000G9B1",
+      "order_id": "ORD20261005012",
+      "user_id": "u_1003",
+      "user_name": "王强",
+      "amount_cents": 30000,
+      "requested_cents": 30000,
+      "issue_type": "QUALITY",
+      "reason": "异响仍然存在，再退 300",
+      "status": "APPROVED",
+      "mode": "MANUAL",
+      "seq": 6,
+      "created_at": "2026-10-24 20:00:00",
+      "reviewed_at": "2026-10-25 10:00:00",
+      "reviewer_id": "m_2001",
+      "reviewer_name": "陈明",
+      "review_note": "二次补偿，注意同类问题",
+      "decision": {
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "HIGH",
+        "risk_label": "高风险",
+        "risk_score": 65,
+        "priority": "P0",
+        "amount_reason": "用户主张部分退款，按主张金额执行，剩余 ¥2,499.00 仍可退",
+        "summary": "转人工审核（高风险，风险分 65）；主因：已签收、高价值订单",
+        "rules": [
+          {
+            "id": "R12",
+            "name": "已签收",
+            "delta": 20,
+            "detail": "已签收，需核验退货入库或凭证"
+          },
+          {
+            "id": "R13",
+            "name": "高价值订单",
+            "delta": 20,
+            "detail": "实付 ¥3,299.00，达高价值阈值"
+          },
+          {
+            "id": "R16",
+            "name": "非首次退款",
+            "delta": 20,
+            "detail": "该订单此前已退 ¥500.00，属二次及以上申请"
+          },
+          {
+            "id": "R21",
+            "name": "需凭证类问题",
+            "delta": 5,
+            "detail": "质量问题，人工需核验图片或检测报告"
+          }
+        ],
+        "needs_evidence": true
+      },
+      "review_history": [
+        {
+          "action": "APPROVE",
+          "action_label": "审批通过",
+          "at": "2026-10-25 10:00:00",
+          "by_id": "m_2001",
+          "by": "陈明",
+          "note": "二次补偿，注意同类问题",
+          "amount_cents": 30000
+        }
+      ]
+    },
+    "RF20261023153000H1J2": {
+      "refund_id": "RF20261023153000H1J2",
+      "order_id": "ORD20261020011",
+      "user_id": "u_1003",
+      "user_name": "王强",
+      "amount_cents": 19900,
+      "requested_cents": null,
+      "issue_type": "NO_LONGER_NEEDED",
+      "reason": "买完发现用不上，想退掉",
+      "status": "REJECTED",
+      "mode": "MANUAL",
+      "seq": 7,
+      "created_at": "2026-10-23 15:30:00",
+      "reviewed_at": "2026-10-23 18:00:00",
+      "reviewer_id": "m_2001",
+      "reviewer_name": "陈明",
+      "review_note": "已签收超过 7 天且为无理由退货，按政策不予退款",
+      "decision": {
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "HIGH",
+        "risk_label": "高风险",
+        "risk_score": 60,
+        "priority": "P0",
+        "amount_reason": "用户未指定金额，按可退余额全额退",
+        "summary": "转人工审核（高风险，风险分 60）；主因：已签收、签收超 7 天",
+        "rules": [
+          {
+            "id": "R12",
+            "name": "已签收",
+            "delta": 20,
+            "detail": "已签收，需核验退货入库或凭证"
+          },
+          {
+            "id": "R20",
+            "name": "签收超 7 天",
+            "delta": 15,
+            "detail": "签收已 1 天以内"
+          }
+        ],
+        "needs_evidence": false
+      },
+      "review_history": [
+        {
+          "action": "REJECT",
+          "action_label": "驳回申请",
+          "at": "2026-10-23 18:00:00",
+          "by_id": "m_2001",
+          "by": "陈明",
+          "note": "已签收超过 7 天且为无理由退货，按政策不予退款",
+          "amount_cents": 19900
+        }
+      ]
     },
     "RF20261106093000E5F6": {
       "refund_id": "RF20261106093000E5F6",
@@ -39,17 +417,66 @@
       "user_id": "u_1002",
       "user_name": "李娜",
       "amount_cents": 50000,
+      "requested_cents": 50000,
+      "issue_type": "QUALITY",
       "reason": "触控偶尔失灵，希望再退 500 元",
-      "status": "APPROVED",
+      "status": "PENDING",
       "mode": "MANUAL",
-      "seq": 3,
+      "seq": 8,
       "created_at": "2026-11-06 09:30:00",
-      "reviewed_at": "2026-11-06 12:08:51",
-      "reviewer_id": "m_2001",
-      "reviewer_name": "陈明",
-      "review_note": "审批通过"
+      "reviewed_at": null,
+      "reviewer_id": null,
+      "reviewer_name": null,
+      "review_note": null,
+      "decision": {
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "MEDIUM",
+        "risk_label": "中风险",
+        "risk_score": 65,
+        "priority": "P1",
+        "amount_reason": "用户主张部分退款，按主张金额执行，剩余 ¥3,299.00 仍可退",
+        "summary": "转人工审核（中风险，风险分 65）；主因：已签收、高价值订单",
+        "rules": [
+          {
+            "id": "R12",
+            "name": "已签收",
+            "delta": 20,
+            "detail": "已签收，需核验退货入库或凭证"
+          },
+          {
+            "id": "R13",
+            "name": "高价值订单",
+            "delta": 20,
+            "detail": "实付 ¥4,799.00，达高价值阈值"
+          },
+          {
+            "id": "R16",
+            "name": "非首次退款",
+            "delta": 20,
+            "detail": "该订单此前已退 ¥1,000.00，属二次及以上申请"
+          },
+          {
+            "id": "R21",
+            "name": "需凭证类问题",
+            "delta": 5,
+            "detail": "质量问题，人工需核验图片或检测报告"
+          }
+        ],
+        "needs_evidence": true
+      },
+      "review_history": []
     }
   },
-  "locks": {},
-  "seq": 3
+  "locks": {
+    "ORD20261020011": {
+      "order_id": "ORD20261020011",
+      "refund_id": "RF20261023153000H1J2",
+      "locked_at": "2026-10-23 18:00:00",
+      "reason": "已签收超过 7 天且为无理由退货，按政策不予退款",
+      "locked_by": "陈明",
+      "active": true
+    }
+  },
+  "seq": 8
 }

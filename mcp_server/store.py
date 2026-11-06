@@ -1,9 +1,13 @@
 """JSON 文件存储层。
 
-三个数据文件，各自独立加锁：
+三个业务数据文件，各自独立加锁：
     data/users.json     账号、密码哈希、角色
     data/orders.json    订单
     data/refunds.json   退款申请与审批记录
+
+另有两个记录型文件（同样加锁，只追加为主）：
+    data/audit.json     审计事件流：用户指令、Agent 步骤、人工操作
+    data/sessions.json  Agent 会话与消息历史
 
 JSON 文件不像数据库那样自带事务和并发控制，所以这里自己补两件事：
 
@@ -37,6 +41,8 @@ SCHEMA_VERSION = 1
 USERS_FILE = "users.json"
 ORDERS_FILE = "orders.json"
 REFUNDS_FILE = "refunds.json"
+AUDIT_FILE = "audit.json"
+SESSIONS_FILE = "sessions.json"
 
 
 def data_dir() -> Path:
@@ -193,12 +199,24 @@ def empty_refunds() -> dict[str, Any]:
     return {"schema_version": SCHEMA_VERSION, "refunds": {}, "locks": {}, "seq": 0}
 
 
+def empty_audit() -> dict[str, Any]:
+    """审计事件流。events 以 seq 为序，只追加，不修改历史事件。"""
+    return {"schema_version": SCHEMA_VERSION, "events": {}, "seq": 0}
+
+
+def empty_sessions() -> dict[str, Any]:
+    """Agent 会话。CLI 与 Web 共用同一份，便于审计页回溯。"""
+    return {"schema_version": SCHEMA_VERSION, "sessions": {}, "seq": 0}
+
+
 def ensure_files() -> None:
-    """确保三个文件存在，避免首次运行时到处判断 None。"""
+    """确保数据文件存在，避免首次运行时到处判断 None。"""
     for name, factory in (
         (USERS_FILE, empty_users),
         (ORDERS_FILE, empty_orders),
         (REFUNDS_FILE, empty_refunds),
+        (AUDIT_FILE, empty_audit),
+        (SESSIONS_FILE, empty_sessions),
     ):
         path = path_of(name)
         if not path.exists():

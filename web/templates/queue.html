@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}待审批 · 退款审批后台{% endblock %}
+{% block title %}待审批 · 订单客服 Agent 后台{% endblock %}
 
 {% block content %}
 <section class="panel">
   <div class="panel-head">
-    <h2>待审批队列</h2>
-    <span class="panel-sub">按提交时间排队，先到先审</span>
+    <h2>人工审核中心</h2>
+    <span class="panel-sub">按提交时间排队，先到先审 · 风险等级由规则引擎给出</span>
   </div>
 
   {% if not items %}
@@ -17,16 +17,21 @@
 
   <div class="queue">
     {% for item in items %}
-    <article class="qcard">
+    <article class="qcard risk-{{ (item.risk_level or 'LOW')|lower }}">
       <div class="qhead">
         <span class="qpos">#{{ item.queue_position }}</span>
         <div class="qtitle">
           <div class="qline1">
             <strong>{{ item.item_name }}</strong>
             <span class="tag">{{ item.status_label }}</span>
+            <span class="pill risk {{ (item.risk_level or 'LOW')|lower }}">
+              {{ item.risk_label or '未评级' }}{% if item.risk_score is not none %} · {{ item.risk_score }} 分{% endif %}
+            </span>
+            {% if item.priority %}<span class="pill prio">{{ item.priority }}</span>{% endif %}
           </div>
           <div class="qline2">
             {{ item.user_name }} · {{ item.order_id }} · 申请编号 {{ item.refund_id }}
+            · {{ item.issue_label }}
           </div>
         </div>
         <div class="qtime">
@@ -45,13 +50,13 @@
             <span class="mlabel">已退</span>
             <span class="mvalue">{{ item.order_refunded }}</span>
           </div>
-          <div class="mcell highlight">
-            <span class="mlabel">本次申请</span>
-            <span class="mvalue">{{ item.amount }}</span>
-          </div>
           <div class="mcell">
-            <span class="mlabel">退后余额</span>
-            <span class="mvalue">{{ item.balance_after }}</span>
+            <span class="mlabel">用户主张</span>
+            <span class="mvalue muted">{{ item.requested_amount }}</span>
+          </div>
+          <div class="mcell highlight">
+            <span class="mlabel">系统判定金额</span>
+            <span class="mvalue">{{ item.amount }}</span>
           </div>
         </div>
 
@@ -66,23 +71,32 @@
           </div>
         </div>
 
+        <div class="decision-line">
+          <span class="rlabel">Agent 判断</span>
+          <span class="rtext">{{ item.decision_summary or '无判定记录' }}</span>
+          {% if item.needs_evidence %}<span class="pill warn">需凭证</span>{% endif %}
+        </div>
+
         <div class="reason">
-          <span class="rlabel">退款原因</span>
+          <span class="rlabel">用户描述</span>
           <span class="rtext">{{ item.reason }}</span>
         </div>
 
         <div class="ship">
           {% if item.shipping_state == 'DELIVERED' %}已签收{% elif item.shipping_state == 'SHIPPED' %}已发货 · 运输中{% else %}未发货{% endif %}
           · {{ item.mode == 'MANUAL' and '需人工审批' or '自动放款' }}
+          · <a href="/review/{{ item.refund_id }}" class="link">查看完整依据与历史 →</a>
         </div>
       </div>
 
       <div class="qfoot">
         <form method="post" action="/refunds/{{ item.refund_id }}/approve" class="inline-form">
+          <input type="hidden" name="back" value="/queue">
           <input name="note" placeholder="通过备注（可选）" maxlength="80">
           <button type="submit" class="btn primary">通过放款</button>
         </form>
         <form method="post" action="/refunds/{{ item.refund_id }}/reject" class="inline-form reject-form">
+          <input type="hidden" name="back" value="/queue">
           <input name="note" placeholder="驳回原因（必填）" maxlength="80" required>
           <button type="submit" class="btn danger">驳回申请</button>
         </form>

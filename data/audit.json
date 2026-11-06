@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "events": {
+    "EV000001A001": {
+      "event_id": "EV000001A001",
+      "seq": 1,
+      "ts": "2026-11-06 09:35:01",
+      "kind": "USER_MESSAGE",
+      "kind_label": "用户指令",
+      "status": "OK",
+      "channel": "WEB",
+      "session_id": "demo-web-u_1002",
+      "user_id": "u_1002",
+      "user_name": "李娜",
+      "elapsed_ms": null,
+      "payload": {
+        "text": "我这单退款到哪一步了？ORD20261010007",
+        "turn": 1
+      }
+    },
+    "EV000002A002": {
+      "event_id": "EV000002A002",
+      "seq": 2,
+      "ts": "2026-11-06 09:35:02",
+      "kind": "TOOL_CALL",
+      "kind_label": "工具调用",
+      "status": "OK",
+      "channel": "WEB",
+      "session_id": "demo-web-u_1002",
+      "user_id": "u_1002",
+      "user_name": "李娜",
+      "elapsed_ms": null,
+      "payload": {
+        "tool": "query_after_sales",
+        "args": {
+          "order_id": "ORD20261010007"
+        }
+      }
+    },
+    "EV000003A003": {
+      "event_id": "EV000003A003",
+      "seq": 3,
+      "ts": "2026-11-06 09:35:03",
+      "kind": "TOOL_RESULT",
+      "kind_label": "工具结果",
+      "status": "OK",
+      "channel": "WEB",
+      "session_id": "demo-web-u_1002",
+      "user_id": "u_1002",
+      "user_name": "李娜",
+      "elapsed_ms": null,
+      "payload": {
+        "tool": "query_after_sales",
+        "text": "共 3 条售后记录：已通过 1 笔、待审批 1 笔",
+        "code": null
+      }
+    },
+    "EV000004A004": {
+      "event_id": "EV000004A004",
+      "seq": 4,
+      "ts": "2026-11-06 09:35:04",
+      "kind": "AGENT_REPLY",
+      "kind_label": "Agent 回复",
+      "status": "OK",
+      "channel": "WEB",
+      "session_id": "demo-web-u_1002",
+      "user_id": "u_1002",
+      "user_name": "李娜",
+      "elapsed_ms": 4200,
+      "payload": {
+        "text": "李娜您好，iPad 这笔目前有一张 ¥500 的退款申请在排队……"
+      }
+    },
+    "EV000005A005": {
+      "event_id": "EV000005A005",
+      "seq": 5,
+      "ts": "2026-11-06 09:35:05",
+      "kind": "RULE_DECISION",
+      "kind_label": "规则判定",
+      "status": "OK",
+      "channel": "WEB",
+      "session_id": null,
+      "user_id": "m_2001",
+      "user_name": "陈明",
+      "elapsed_ms": null,
+      "payload": {
+        "order_id": "ORD20261010007",
+        "decision": "MANUAL_REVIEW",
+        "decision_label": "转人工审核",
+        "risk_level": "MEDIUM",
+        "risk_score": 65,
+        "priority": "P1",
+        "amount_cents": 50000,
+        "amount_reason": "用户主张部分退款，按主张金额执行，剩余 ¥3,299.00 仍可退",
+        "issue_type": "QUALITY",
+        "summary": "转人工审核（中风险，风险分 65）；主因：已签收、高价值订单"
+      }
+    },
+    "EV000006A006": {
+      "event_id": "EV000006A006",
+      "seq": 6,
+      "ts": "2026-11-06 09:35:06",
+      "kind": "HUMAN_ACTION",
+      "kind_label": "人工操作",
+      "status": "OK",
+      "channel": "WEB",
+      "session_id": null,
+      "user_id": "m_2001",
+      "user_name": "陈明",
+      "elapsed_ms": null,
+      "payload": {
+        "action": "APPROVE",
+        "action_label": "审批通过",
+        "refund_id": "RF20261028110000C3D4",
+        "order_id": "ORD20261010007",
+        "amount_cents": 100000,
+        "note": "协商退 1000 元",
+        "agent_decision": "转人工审核（中风险，风险分 45）"
+      }
+    }
+  },
+  "seq": 6
+}

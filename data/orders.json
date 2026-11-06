@@ -115,6 +115,25 @@
       "tracking_no": "YT7788990011",
       "updated_at": "2026-10-23 11:45:00"
     },
+    "ORD20261016013": {
+      "order_id": "ORD20261016013",
+      "owner_id": "u_1001",
+      "owner_name": "张伟",
+      "item_name": "Anker 736 氮化镓充电器 65W",
+      "item_desc": "白色 / 双 C 口",
+      "amount_cents": 15900,
+      "status": "REFUNDED",
+      "created_at": "2026-10-16 10:50:00",
+      "paid_at": "2026-10-16 10:51:00",
+      "shipped_at": null,
+      "delivered_at": null,
+      "cancelled_at": "2026-10-16 11:20:08",
+      "cancel_reason": "NO_LONGER_NEEDED",
+      "refunded_cents": 15900,
+      "refunded_at": "2026-10-16 11:21:00",
+      "tracking_no": null,
+      "updated_at": "2026-10-16 11:21:00"
+    },
     "ORD20261103006": {
       "order_id": "ORD20261103006",
       "owner_id": "u_1002",
@@ -148,10 +167,29 @@
       "delivered_at": "2026-10-13 16:10:00",
       "cancelled_at": null,
       "cancel_reason": null,
-      "refunded_cents": 150000,
-      "refunded_at": "2026-11-06 12:08:51",
+      "refunded_cents": 100000,
+      "refunded_at": "2026-10-28 11:00:00",
       "tracking_no": "JD5566778899",
-      "updated_at": "2026-11-06 12:08:51"
+      "updated_at": "2026-10-28 11:00:00"
+    },
+    "ORD20260928010": {
+      "order_id": "ORD20260928010",
+      "owner_id": "u_1002",
+      "owner_name": "李娜",
+      "item_name": "北鼎养生壶 K159 全玻璃",
+      "item_desc": "1.5L / 带滤网",
+      "amount_cents": 89900,
+      "status": "REFUNDED",
+      "created_at": "2026-09-28 08:40:00",
+      "paid_at": "2026-09-28 08:41:10",
+      "shipped_at": "2026-09-29 10:00:00",
+      "delivered_at": "2026-10-01 15:20:00",
+      "cancelled_at": null,
+      "cancel_reason": null,
+      "refunded_cents": 89900,
+      "refunded_at": "2026-10-04 09:30:00",
+      "tracking_no": "ZTO5566778899",
+      "updated_at": "2026-10-04 09:30:00"
     },
     "ORD20261104008": {
       "order_id": "ORD20261104008",
@@ -171,6 +209,44 @@
       "refunded_at": null,
       "tracking_no": null,
       "updated_at": "2026-11-04 11:16:40"
+    },
+    "ORD20261020011": {
+      "order_id": "ORD20261020011",
+      "owner_id": "u_1003",
+      "owner_name": "王强",
+      "item_name": "罗技 K380 蓝牙键盘",
+      "item_desc": "深灰 / 多设备切换",
+      "amount_cents": 19900,
+      "status": "COMPLETED",
+      "created_at": "2026-10-20 10:00:00",
+      "paid_at": "2026-10-20 10:01:00",
+      "shipped_at": "2026-10-20 16:00:00",
+      "delivered_at": "2026-10-22 09:30:00",
+      "cancelled_at": null,
+      "cancel_reason": null,
+      "refunded_cents": 0,
+      "refunded_at": null,
+      "tracking_no": "YT1122334455",
+      "updated_at": "2026-10-22 09:30:00"
+    },
+    "ORD20261005012": {
+      "order_id": "ORD20261005012",
+      "owner_id": "u_1003",
+      "owner_name": "王强",
+      "item_name": "小米电视 S Pro 65 英寸",
+      "item_desc": "Mini LED / 4K 144Hz",
+      "amount_cents": 329900,
+      "status": "COMPLETED",
+      "created_at": "2026-10-05 19:10:00",
+      "paid_at": "2026-10-05 19:12:00",
+      "shipped_at": "2026-10-06 09:00:00",
+      "delivered_at": "2026-10-08 14:00:00",
+      "cancelled_at": null,
+      "cancel_reason": null,
+      "refunded_cents": 80000,
+      "refunded_at": "2026-10-25 10:00:00",
+      "tracking_no": "SF2233445566",
+      "updated_at": "2026-10-25 10:00:00"
     }
   }
 }

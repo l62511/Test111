@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}退款审批后台{% endblock %}</title>
+  <title>{% block title %}订单客服 Agent 后台{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -12,8 +12,8 @@
     <div class="brand">
       <span class="logo"></span>
       <div>
-        <div class="brand-name">退款审批后台</div>
-        <div class="brand-sub">订单客服 Agent · 商家端</div>
+        <div class="brand-name">订单客服 Agent 后台</div>
+        <div class="brand-sub">人工审核 · 会话观测 · 售后分析 · 操作审计</div>
       </div>
     </div>
     <nav class="nav">
@@ -22,6 +22,9 @@
       </a>
       <a href="/refunds" class="{% if page == 'refunds' %}on{% endif %}">退款记录</a>
       <a href="/orders" class="{% if page == 'orders' %}on{% endif %}">订单</a>
+      <a href="/chat" class="{% if page == 'chat' %}on{% endif %}">Agent 会话</a>
+      <a href="/analytics" class="{% if page == 'analytics' %}on{% endif %}">售后分析</a>
+      <a href="/audit" class="{% if page == 'audit' %}on{% endif %}">审计</a>
     </nav>
     <div class="who">
       <span class="avatar">{{ user.name[:1] }}</span>
@@ -37,19 +40,19 @@
       <div class="stat-hint">合计 {{ stats.pending_amount }}</div>
     </div>
     <div class="stat">
-      <div class="stat-label">今日已通过</div>
-      <div class="stat-value">{{ stats.approved_today }}<span class="unit">笔</span></div>
-      <div class="stat-hint">含自动放款</div>
+      <div class="stat-label">本月退款</div>
+      <div class="stat-value">{{ stats.month_refund_amount }}</div>
+      <div class="stat-hint">{{ stats.month_refund_count }} 笔已放款</div>
     </div>
     <div class="stat">
-      <div class="stat-label">累计驳回</div>
-      <div class="stat-value">{{ stats.rejected_count }}<span class="unit">笔</span></div>
-      <div class="stat-hint">驳回后订单锁定</div>
+      <div class="stat-label">本月退款率</div>
+      <div class="stat-value">{{ stats.month_refund_rate }}<span class="unit">%</span></div>
+      <div class="stat-hint">按订单数计</div>
     </div>
-    <div class="stat">
-      <div class="stat-label">锁定订单</div>
-      <div class="stat-value">{{ stats.locked_count }}<span class="unit">笔</span></div>
-      <div class="stat-hint">需人工解锁</div>
+    <div class="stat {% if stats.high_risk_pending %}alert{% endif %}">
+      <div class="stat-label">高风险待审</div>
+      <div class="stat-value">{{ stats.high_risk_pending }}<span class="unit">笔</span></div>
+      <div class="stat-hint">建议优先处理</div>
     </div>
   </section>
 

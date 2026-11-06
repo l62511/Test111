@@ -106,7 +106,7 @@ def test_query_lists_only_own_orders(db):
     assert result["ok"] is True
     ids = {o["order_id"] for o in result["orders"]}
     assert OTHERS not in ids
-    assert len(ids) == 6
+    assert len(ids) == 7
 
 
 def test_query_others_order_reports_not_found(db):
@@ -384,4 +384,4 @@ def test_pending_queue_is_ordered(db):
 def test_dashboard_stats(db):
     stats = service.dashboard_stats()
     assert stats["pending_count"] == 1
-    assert stats["order_count"] == 9
+    assert stats["order_count"] == 13

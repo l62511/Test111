@@ -6,8 +6,9 @@
    所有查询都按 owner_id 过滤，越权订单统一表现为「不存在」。
 2. **写操作走一个持锁事务**。读-改-写在同一个文件锁内完成，
    不存在「先查再改」的窗口期。
-3. **退款是申请制**。未发货订单直接放款；已发货或已签收的订单生成
-   一条 PENDING 申请，进商家后台队列，等人审批。
+3. **退款由规则引擎判定**。模型不传金额、也不决定走自动还是人工：
+   调用方只提供退款诉求，rules.evaluate() 算出金额、风险分与目标通道，
+   未发货的低风险单直接放款，其余进商家队列。
 4. **退款金额累加**。订单上记 refunded_cents，每次退款前校验
    「已退 + 本次 ≤ 实付」，支持多次部分退款，但累计绝不超额。
 """
@@ -18,7 +19,7 @@ import secrets
 from datetime import datetime
 from typing import Any
 
-from . import store
+from . import analytics, audit, rules, store
 
 # 订单状态
 VALID_STATUS = ("CREATED", "PAID", "CANCELLED", "COMPLETED", "REFUNDED")
@@ -274,6 +275,152 @@ def _summary_line(orders: list[dict[str, Any]]) -> str:
 
 
 # --------------------------------------------------------------------------
+# 售后查询：退款记录 / 售后申请 / 历史售后情况
+# --------------------------------------------------------------------------
+def query_after_sales(caller_id: str, order_id: str | None = None) -> dict[str, Any]:
+    """查当前用户的售后全貌：申请记录、审批结果、历史频次与风险画像。"""
+    order_id = (order_id or "").strip().upper() or None
+
+    orders = store.read_only(store.ORDERS_FILE, store.empty_orders())["orders"]
+    refunds = store.read_only(store.REFUNDS_FILE, store.empty_refunds())
+    locks = refunds.get("locks", {})
+
+    mine = [o for o in orders.values() if o["owner_id"] == caller_id]
+    my_orders = {o["order_id"] for o in mine}
+
+    records = [
+        r for r in refunds["refunds"].values()
+        if r["order_id"] in my_orders and (order_id is None or r["order_id"] == order_id)
+    ]
+    records.sort(key=lambda r: r["seq"], reverse=True)
+
+    if order_id and order_id not in my_orders:
+        raise BizError(
+            E_NOT_FOUND,
+            f"未找到订单 {order_id}",
+            "该订单不存在，或不属于当前登录用户。不要向用户确认它是否属于他人。",
+        )
+
+    approved = [r for r in records if r["status"] == "APPROVED"]
+    pending = [r for r in records if r["status"] == "PENDING"]
+    rejected = [r for r in records if r["status"] == "REJECTED"]
+
+    items = []
+    for r in records[:20]:
+        order = orders.get(r["order_id"], {})
+        lock = locks.get(r["order_id"])
+        items.append({
+            "refund_id": r["refund_id"],
+            "order_id": r["order_id"],
+            "item_name": order.get("item_name", "—"),
+            "amount": yuan(r["amount_cents"]),
+            "requested_amount": yuan(r.get("requested_cents") or r["amount_cents"]),
+            "status": r["status"],
+            "status_label": REFUND_STATUS_LABEL[r["status"]],
+            "mode": r.get("mode"),
+            "issue_type": r.get("issue_type", "OTHER"),
+            "issue_label": rules.ISSUE_LABEL.get(r.get("issue_type", "OTHER"), "其他原因"),
+            "reason": r["reason"],
+            "created_at": r["created_at"],
+            "reviewed_at": r.get("reviewed_at"),
+            "reviewer_name": r.get("reviewer_name"),
+            "review_note": r.get("review_note"),
+            "decision": (r.get("decision") or {}).get("decision"),
+            "decision_label": (r.get("decision") or {}).get("decision_label"),
+            "risk_label": (r.get("decision") or {}).get("risk_label"),
+            "locked": bool(lock and lock.get("active")),
+        })
+
+    total_refunded = sum(r["amount_cents"] for r in approved)
+    summary = (
+        f"共 {len(records)} 条售后记录：已通过 {len(approved)} 笔（合计 {yuan(total_refunded)}）、"
+        f"待审批 {len(pending)} 笔、已驳回 {len(rejected)} 笔"
+        if records
+        else "该用户没有售后记录"
+    )
+
+    return {
+        "ok": True,
+        "count": len(items),
+        "records": items,
+        "summary": summary,
+        "stats": {
+            "total": len(records),
+            "approved": len(approved),
+            "pending": len(pending),
+            "rejected": len(rejected),
+            "refunded_amount": yuan(total_refunded),
+            "refunded_cents": total_refunded,
+            "locked_orders": len([o for o in my_orders
+                                  if (locks.get(o) or {}).get("active")]),
+        },
+        "profile": _refund_profile(caller_id, records, mine),
+    }
+
+
+def _refund_profile(
+    caller_id: str, records: list[dict[str, Any]], orders: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """用户售后画像，供客服判断该用户是否属于高频退款人群。"""
+    now = datetime.now()
+    recent = 0
+    for r in records:
+        try:
+            days = (now - datetime.strptime(r["created_at"], "%Y-%m-%d %H:%M:%S")).days
+        except (TypeError, ValueError):
+            continue
+        if days <= 30:
+            recent += 1
+    issue_counter: dict[str, int] = {}
+    for r in records:
+        key = r.get("issue_type", "OTHER")
+        issue_counter[key] = issue_counter.get(key, 0) + 1
+    top_issue = max(issue_counter.items(), key=lambda kv: kv[1])[0] if issue_counter else None
+    return {
+        "order_count": len(orders),
+        "refund_count": len(records),
+        "recent_30d": recent,
+        "top_issue": rules.ISSUE_LABEL.get(top_issue, "无") if top_issue else "无",
+        "frequent": recent >= 2,
+    }
+
+
+# --------------------------------------------------------------------------
+# 售后数据分析
+# --------------------------------------------------------------------------
+ANALYTICS_DIMENSIONS = ("SUMMARY", "PRODUCT", "REASON", "ANOMALY", "TREND")
+
+
+def sales_analytics(period: str = "ALL", dimension: str = "SUMMARY") -> dict[str, Any]:
+    """售后数据聚合。dimension 决定返回哪一块明细，SUMMARY 返回全貌。"""
+    dimension = (dimension or "SUMMARY").upper()
+    if dimension not in ANALYTICS_DIMENSIONS:
+        raise BizError(E_INVALID, f"不支持的分析维度 {dimension}",
+                       f"可选值: {', '.join(ANALYTICS_DIMENSIONS)}")
+    period = (period or "ALL").upper()
+    if period not in analytics.PERIODS:
+        raise BizError(E_INVALID, f"不支持的时间范围 {period}",
+                       f"可选值: {', '.join(analytics.PERIODS)}")
+
+    data = analytics.summary(period)
+    payload: dict[str, Any] = {
+        "ok": True,
+        "period": data["period"],
+        "totals": data["totals"],
+        "text": analytics.to_text(data),
+    }
+    if dimension in ("SUMMARY", "PRODUCT"):
+        payload["by_product"] = data["by_product"]
+    if dimension in ("SUMMARY", "REASON"):
+        payload["by_issue"] = data["by_issue"]
+    if dimension in ("SUMMARY", "ANOMALY"):
+        payload["anomalies"] = data["anomalies"]
+    if dimension in ("SUMMARY", "TREND"):
+        payload["trend"] = data["trend"]
+    return payload
+
+
+# --------------------------------------------------------------------------
 # 取消
 # --------------------------------------------------------------------------
 def cancel_order(caller_id: str, order_id: str, reason: str | None = None) -> dict[str, Any]:
@@ -314,25 +461,47 @@ def cancel_order(caller_id: str, order_id: str, reason: str | None = None) -> di
 
 
 # --------------------------------------------------------------------------
-# 退款：直接退 or 提交申请
+# 退款：规则引擎判定，自动放款 or 进人工队列
 # --------------------------------------------------------------------------
 def refund_order(
     caller_id: str,
     order_id: str,
     amount: float | None = None,
     reason: str | None = None,
+    issue_type: str | None = None,
 ) -> dict[str, Any]:
-    """发起退款。
+    """兼容入口。amount 会被当作「用户主张金额」，最终金额仍由规则引擎裁决。"""
+    return submit_refund(
+        caller_id,
+        order_id,
+        reason=reason,
+        issue_type=issue_type,
+        requested_amount=amount,
+    )
 
-    未发货且已取消 -> 立即退款，result 为 REFUNDED。
-    已发货 / 已签收   -> 生成 PENDING 申请进商家队列，result 为 PENDING。
-    两条路径都受「累计退款不超过实付」约束。
+
+def submit_refund(
+    caller_id: str,
+    order_id: str,
+    *,
+    reason: str | None = None,
+    issue_type: str | None = None,
+    requested_amount: float | None = None,
+    channel: str = audit.CHANNEL_SYSTEM,
+    session_id: str | None = None,
+) -> dict[str, Any]:
+    """提交退款。模型只能提供诉求，金额与通道由 rules.evaluate 决定。
+
+    锁顺序固定为 REFUNDS -> ORDERS。审批路径同样如此，避免两个进程
+    一个先锁订单、一个先锁退款时互相等待（ABBA 死锁）。
     """
     order_id = (order_id or "").strip().upper()
     if not order_id:
         raise BizError(E_INVALID, "缺少订单号", "请先向用户索要订单号，不要自行编造")
 
     reason_text = (reason or "").strip() or "未填写退款原因"
+    issue = issue_type if issue_type in rules.ISSUE_TYPES else "OTHER"
+    requested_cents = _to_cents(requested_amount)
 
     orders = store.read_only(store.ORDERS_FILE, store.empty_orders())["orders"]
     order = orders.get(order_id)
@@ -355,7 +524,7 @@ def refund_order(
             f"申请编号 {pending['refund_id']}，告知用户正在商家审核中，请勿重复提交。",
         )
 
-    # 已全额退完的订单，不论当前状态如何，都先报「已退款」这个更准确的原因
+    # 已全额退完，不论当前状态如何都先报这个更准确的原因
     if order.get("refunded_cents", 0) >= order["amount_cents"]:
         raise BizError(
             E_ALREADY_REFUNDED,
@@ -363,146 +532,176 @@ def refund_order(
             "直接说明已退款金额和到账时间，不要再发起退款",
         )
 
-    amount_cents = _to_cents(amount)
-    shipped = order.get("shipped_at") is not None
-
-    if order["status"] == "CANCELLED" and not shipped:
-        return _refund_direct(caller_id, order_id, amount_cents, reason_text)
-    return _refund_submit(caller_id, order_id, amount_cents, reason_text)
-
-
-def _validate_amount(order: dict[str, Any], amount_cents: int | None) -> int:
-    """校验本次退款金额。核心是「已退 + 本次」不能超过实付。"""
-    refunded = order.get("refunded_cents", 0)
-    balance = order["amount_cents"] - refunded
-
-    if balance <= 0:
-        raise BizError(
-            E_ALREADY_REFUNDED,
-            f"订单 {order['order_id']} 已全额退款 {yuan(refunded)}，没有可退余额",
-            "直接说明已退款金额和到账时间，不要再发起退款",
-        )
-
-    request_cents = balance if amount_cents is None else amount_cents
-    if request_cents <= 0:
-        raise BizError(E_AMOUNT, "退款金额必须大于 0", "请确认金额后重新提交")
-    if request_cents > balance:
-        raise BizError(
-            E_AMOUNT,
-            f"退款金额 {yuan(request_cents)} 超过可退余额 {yuan(balance)}"
-            f"（实付 {yuan(order['amount_cents'])}，已退 {yuan(refunded)}）",
-            f"本次最多可退 {yuan(balance)}，请调整金额或省略金额表示退剩余全部",
-            extra={
-                "refundable_balance": yuan(balance),
-                "already_refunded": yuan(refunded),
-                "order_amount": yuan(order["amount_cents"]),
-            },
-        )
-    return request_cents
-
-
-def _refund_direct(
-    caller_id: str, order_id: str, amount_cents: int | None, reason: str
-) -> dict[str, Any]:
-    """未发货：立即退款，记一条 AUTO 记录。"""
-    ts = now()
-    refund_id = _new_refund_id()
-
-    with store.transaction(store.ORDERS_FILE, store.empty_orders()) as data:
-        order = data["orders"][order_id]
-        if order["status"] not in REFUNDABLE_STATUS:
-            raise BizError(
-                E_NOT_REFUNDABLE,
-                f"订单 {order_id} 当前是{STATUS_LABEL[order['status']]}，无法退款",
-                "已支付未取消的订单请先取消；未支付的订单无需退款",
-            )
-        cents = _validate_amount(order, amount_cents)
-        _apply_refund(order, cents, ts)
-        snapshot = dict(order)
-
-    with store.transaction(store.REFUNDS_FILE, store.empty_refunds()) as rdata:
-        rdata["seq"] += 1
-        rdata["refunds"][refund_id] = {
-            "refund_id": refund_id,
-            "order_id": order_id,
-            "user_id": caller_id,
-            "user_name": snapshot["owner_name"],
-            "amount_cents": cents,
-            "reason": reason,
-            "status": "APPROVED",
-            "mode": "AUTO",
-            "seq": rdata["seq"],
-            "created_at": ts,
-            "reviewed_at": ts,
-            "reviewer_id": "system",
-            "reviewer_name": "系统自动放款",
-            "review_note": "未发货订单，无需人工审批",
-        }
-
-    refunds = store.read_only(store.REFUNDS_FILE, store.empty_refunds())
-    return {
-        "ok": True,
-        "action": "refund",
-        "result": "REFUNDED",
-        "refund_id": refund_id,
-        "message": f"订单 {order_id} 退款 {yuan(cents)} 已到账处理（未发货，无需审批）",
-        "order": _shape(snapshot, refunds),
-        "arrival_note": "原路退回，通常 1-3 个工作日到账",
-    }
-
-
-def _refund_submit(
-    caller_id: str, order_id: str, amount_cents: int | None, reason: str
-) -> dict[str, Any]:
-    """已发货 / 已签收：生成待审批申请，进商家队列，不放款。"""
-    ts = now()
-    refund_id = _new_refund_id()
-
-    orders = store.read_only(store.ORDERS_FILE, store.empty_orders())["orders"]
-    order = orders[order_id]
     if order["status"] not in REFUNDABLE_STATUS:
         raise BizError(
             E_NOT_REFUNDABLE,
             f"订单 {order_id} 当前是{STATUS_LABEL[order['status']]}，无法申请退款",
             "已支付未取消的订单请先取消；未支付的订单无需退款",
         )
-    cents = _validate_amount(order, amount_cents)
+
+    user_refunds = [r for r in refunds_snap["refunds"].values()
+                    if r["user_id"] == caller_id]
+    decision = rules.evaluate(
+        order,
+        requested_cents=requested_cents,
+        issue_type=issue,
+        user_refunds=user_refunds,
+    )
+
+    if decision["decision"] == rules.DECISION_REJECT:
+        balance = order["amount_cents"] - order.get("refunded_cents", 0)
+        code = E_ALREADY_REFUNDED if decision.get("reject_code") == "NO_BALANCE" else E_AMOUNT
+        raise BizError(
+            code,
+            decision.get("reject_reason") or "该申请不符合退款条件",
+            f"本次最多可退 {yuan(balance)}，请调整金额或省略金额表示退剩余全部",
+            extra={
+                "refundable_balance": yuan(balance),
+                "already_refunded": yuan(order.get("refunded_cents", 0)),
+                "order_amount": yuan(order["amount_cents"]),
+            },
+        )
+
+    audit.log(
+        audit.KIND_RULE_DECISION,
+        {
+            "order_id": order_id,
+            "decision": decision["decision"],
+            "decision_label": decision["decision_label"],
+            "risk_level": decision["risk_level"],
+            "risk_score": decision["risk_score"],
+            "priority": decision["priority"],
+            "amount_cents": decision["amount_cents"],
+            "amount_reason": decision["amount_reason"],
+            "issue_type": issue,
+            "rules": decision["rules"],
+            "summary": decision["summary"],
+        },
+        session_id=session_id,
+        user_id=caller_id,
+        user_name=order["owner_name"],
+        channel=channel,
+    )
+
+    return _write_refund(
+        caller_id=caller_id, order=order, decision=decision,
+        reason_text=reason_text, requested_cents=requested_cents,
+    )
+
+
+def _write_refund(
+    *,
+    caller_id: str,
+    order: dict[str, Any],
+    decision: dict[str, Any],
+    reason_text: str,
+    requested_cents: int | None,
+) -> dict[str, Any]:
+    """落库。自动放款与人工队列共用一段事务，锁顺序 REFUNDS -> ORDERS。"""
+    order_id = order["order_id"]
+    ts = now()
+    refund_id = _new_refund_id()
+    auto = decision["decision"] == rules.DECISION_AUTO
+    cents = decision["amount_cents"]
 
     with store.transaction(store.REFUNDS_FILE, store.empty_refunds()) as rdata:
-        # 进锁后再查一次，避免并发提交出两条 PENDING
+        # 进锁后再查一次，挡住并发重复提交
         if _pending_refund(order_id, rdata):
             raise BizError(E_PENDING_EXISTS, f"订单 {order_id} 已有一笔待审批的退款申请",
                            "告知用户正在审核中即可，不要重复提交")
         rdata["seq"] += 1
-        rdata["refunds"][refund_id] = {
+        seq = rdata["seq"]
+        record = {
             "refund_id": refund_id,
             "order_id": order_id,
             "user_id": caller_id,
             "user_name": order["owner_name"],
             "amount_cents": cents,
-            "reason": reason,
-            "status": "PENDING",
-            "mode": "MANUAL",
-            "seq": rdata["seq"],
+            "requested_cents": requested_cents,
+            "reason": reason_text,
+            "issue_type": decision["issue_type"],
+            "status": "APPROVED" if auto else "PENDING",
+            "mode": "AUTO" if auto else "MANUAL",
+            "seq": seq,
             "created_at": ts,
-            "reviewed_at": None,
-            "reviewer_id": None,
-            "reviewer_name": None,
-            "review_note": None,
+            "reviewed_at": ts if auto else None,
+            "reviewer_id": "system" if auto else None,
+            "reviewer_name": "系统自动放款" if auto else None,
+            "review_note": "规则引擎自动放款，无需人工审批" if auto else None,
+            "decision": {
+                "decision": decision["decision"],
+                "decision_label": decision["decision_label"],
+                "risk_level": decision["risk_level"],
+                "risk_label": decision["risk_label"],
+                "risk_score": decision["risk_score"],
+                "priority": decision["priority"],
+                "amount_reason": decision["amount_reason"],
+                "summary": decision["summary"],
+                "rules": decision["rules"],
+                "needs_evidence": decision["needs_evidence"],
+            },
+            "review_history": [],
         }
-        position = _queue_position(rdata, refund_id)
+
+        if auto:
+            with store.transaction(store.ORDERS_FILE, store.empty_orders()) as odata:
+                live = odata["orders"].get(order_id)
+                if live is None:
+                    raise BizError(E_NOT_FOUND, "关联订单不存在", "")
+                balance = live["amount_cents"] - live.get("refunded_cents", 0)
+                if cents > balance:
+                    raise BizError(
+                        E_AMOUNT,
+                        f"可退余额仅剩 {yuan(balance)}，不足以支付本次 {yuan(cents)}",
+                        "请让用户按剩余额度重新提交",
+                    )
+                _apply_refund(live, cents, ts)
+                snapshot = dict(live)
+
+        rdata["refunds"][refund_id] = record
+        position = None if auto else _queue_position(rdata, refund_id)
 
     refunds = store.read_only(store.REFUNDS_FILE, store.empty_refunds())
+    if auto:
+        return {
+            "ok": True,
+            "action": "refund",
+            "result": "REFUNDED",
+            "refund_id": refund_id,
+            "amount": yuan(cents),
+            "decision": {
+                "channel": "AUTO_APPROVE",
+                "risk_label": decision["risk_label"],
+                "risk_score": decision["risk_score"],
+                "amount_reason": decision["amount_reason"],
+                "summary": decision["summary"],
+            },
+            "message": f"订单 {order_id} 退款 {yuan(cents)} 已放款（{decision['issue_label']}，规则引擎自动通过）",
+            "order": _shape(snapshot, refunds),
+            "arrival_note": "原路退回，通常 1-3 个工作日到账",
+        }
+
     return {
         "ok": True,
         "action": "refund_submitted",
         "result": "PENDING",
         "refund_id": refund_id,
+        "amount": yuan(cents),
+        "queue_position": position,
+        "decision": {
+            "channel": "MANUAL_REVIEW",
+            "risk_label": decision["risk_label"],
+            "risk_score": decision["risk_score"],
+            "priority": decision["priority"],
+            "amount_reason": decision["amount_reason"],
+            "summary": decision["summary"],
+            "rules": [{"id": r["id"], "name": r["name"], "delta": r["delta"]}
+                      for r in decision["rules"]],
+        },
         "message": (
             f"订单 {order_id} 的退款申请（{yuan(cents)}）已提交，"
             f"当前排队第 {position} 位，等待商家审批"
         ),
-        "queue_position": position,
         "order": _shape(order, refunds),
         "next_step": "商家审批通过后放款，可让用户凭申请编号查询进度",
     }
@@ -575,7 +774,32 @@ def approve_refund(refund_id: str, reviewer_id: str, note: str = "") -> dict[str
         refund["reviewer_id"] = reviewer["user_id"]
         refund["reviewer_name"] = reviewer["name"]
         refund["review_note"] = note or "审批通过"
+        refund.setdefault("review_history", []).append({
+            "action": "APPROVE",
+            "action_label": "审批通过",
+            "at": ts,
+            "by_id": reviewer["user_id"],
+            "by": reviewer["name"],
+            "note": note or "审批通过",
+            "amount_cents": refund["amount_cents"],
+        })
         rdata.setdefault("locks", {}).pop(refund["order_id"], None)
+        review_snapshot = dict(refund)
+
+    audit.log(
+        audit.KIND_HUMAN_ACTION,
+        {
+            "action": "APPROVE",
+            "action_label": "审批通过",
+            "refund_id": refund_id,
+            "order_id": review_snapshot["order_id"],
+            "amount_cents": review_snapshot["amount_cents"],
+            "note": review_snapshot["review_note"],
+            "agent_decision": (review_snapshot.get("decision") or {}).get("summary"),
+        },
+        user_id=reviewer["user_id"], user_name=reviewer["name"],
+        channel=audit.CHANNEL_WEB,
+    )
 
     refunds = store.read_only(store.REFUNDS_FILE, store.empty_refunds())
     return {
@@ -608,6 +832,15 @@ def reject_refund(refund_id: str, reviewer_id: str, note: str = "") -> dict[str,
         refund["reviewer_id"] = reviewer["user_id"]
         refund["reviewer_name"] = reviewer["name"]
         refund["review_note"] = note_text
+        refund.setdefault("review_history", []).append({
+            "action": "REJECT",
+            "action_label": "驳回申请",
+            "at": ts,
+            "by_id": reviewer["user_id"],
+            "by": reviewer["name"],
+            "note": note_text,
+            "amount_cents": refund["amount_cents"],
+        })
 
         rdata.setdefault("locks", {})[refund["order_id"]] = {
             "order_id": refund["order_id"],
@@ -617,6 +850,22 @@ def reject_refund(refund_id: str, reviewer_id: str, note: str = "") -> dict[str,
             "locked_by": reviewer["name"],
             "active": True,
         }
+        review_snapshot = dict(refund)
+
+    audit.log(
+        audit.KIND_HUMAN_ACTION,
+        {
+            "action": "REJECT",
+            "action_label": "驳回申请",
+            "refund_id": refund_id,
+            "order_id": review_snapshot["order_id"],
+            "amount_cents": review_snapshot["amount_cents"],
+            "note": note_text,
+            "agent_decision": (review_snapshot.get("decision") or {}).get("summary"),
+        },
+        user_id=reviewer["user_id"], user_name=reviewer["name"],
+        channel=audit.CHANNEL_WEB,
+    )
 
     return {
         "ok": True,
@@ -643,6 +892,19 @@ def unlock_order(order_id: str, operator_id: str, note: str = "") -> dict[str, A
         lock["unlocked_at"] = ts
         lock["unlocked_by"] = operator["name"]
         lock["unlock_note"] = note or "运营人工解锁"
+        lock_note = lock["unlock_note"]
+
+    audit.log(
+        audit.KIND_HUMAN_ACTION,
+        {
+            "action": "UNLOCK",
+            "action_label": "解除退款锁",
+            "order_id": order_id,
+            "note": lock_note,
+        },
+        user_id=operator["user_id"], user_name=operator["name"],
+        channel=audit.CHANNEL_WEB,
+    )
 
     return {
         "ok": True,
@@ -680,6 +942,7 @@ def list_refunds(
         order_amount = order.get("amount_cents", 0)
         order_refunded = order.get("refunded_cents", 0)
         pending = r["amount_cents"] if r["status"] == "PENDING" else 0
+        decision = r.get("decision") or {}
         out.append({
             "refund_id": r["refund_id"],
             "order_id": r["order_id"],
@@ -687,6 +950,9 @@ def list_refunds(
             "user_name": r["user_name"],
             "amount": yuan(r["amount_cents"]),
             "amount_cents": r["amount_cents"],
+            "requested_amount": yuan(r.get("requested_cents")
+                                     if r.get("requested_cents") is not None
+                                     else r["amount_cents"]),
             "order_amount": yuan(order_amount),
             "order_amount_cents": order_amount,
             "order_refunded": yuan(order_refunded),
@@ -698,6 +964,8 @@ def list_refunds(
                 else ("SHIPPED" if order.get("shipped_at") else "NOT_SHIPPED")
             ),
             "reason": r["reason"],
+            "issue_type": r.get("issue_type", "OTHER"),
+            "issue_label": rules.ISSUE_LABEL.get(r.get("issue_type", "OTHER"), "其他原因"),
             "status": r["status"],
             "status_label": REFUND_STATUS_LABEL[r["status"]],
             "mode": r["mode"],
@@ -706,8 +974,104 @@ def list_refunds(
             "reviewed_at": r["reviewed_at"],
             "reviewer_name": r["reviewer_name"],
             "review_note": r["review_note"],
+            # 规则引擎判定，供审核中心展示
+            "decision": decision.get("decision"),
+            "decision_label": decision.get("decision_label"),
+            "risk_level": decision.get("risk_level"),
+            "risk_label": decision.get("risk_label"),
+            "risk_score": decision.get("risk_score"),
+            "priority": decision.get("priority"),
+            "decision_summary": decision.get("summary"),
+            "needs_evidence": decision.get("needs_evidence", False),
         })
     return out
+
+
+def review_detail(refund_id: str) -> dict[str, Any]:
+    """审核详情：订单全貌 + 该单全部退款历史 + 用户历史 + Agent 判断依据。"""
+    data = store.read_only(store.REFUNDS_FILE, store.empty_refunds())
+    refund = data["refunds"].get(refund_id)
+    if refund is None:
+        raise BizError(E_REFUND_NOT_FOUND, f"未找到退款申请 {refund_id}", "")
+
+    orders = store.read_only(store.ORDERS_FILE, store.empty_orders())["orders"]
+    order = orders.get(refund["order_id"], {})
+    if not order:
+        raise BizError(E_NOT_FOUND, "关联订单不存在", "")
+
+    history = [
+        r for r in data["refunds"].values() if r["order_id"] == refund["order_id"]
+    ]
+    history.sort(key=lambda r: r["seq"])
+
+    user_history = [
+        r for r in data["refunds"].values() if r["user_id"] == refund["user_id"]
+    ]
+    user_history.sort(key=lambda r: r["seq"], reverse=True)
+
+    decision = refund.get("decision") or {}
+    lock = (data.get("locks", {}).get(refund["order_id"]) or {})
+
+    return {
+        "refund": {
+            "refund_id": refund["refund_id"],
+            "status": refund["status"],
+            "status_label": REFUND_STATUS_LABEL[refund["status"]],
+            "amount": yuan(refund["amount_cents"]),
+            "amount_cents": refund["amount_cents"],
+            "requested_amount": yuan(refund.get("requested_cents")
+                                     if refund.get("requested_cents") is not None
+                                     else refund["amount_cents"]),
+            "requested_cents": refund.get("requested_cents"),
+            "reason": refund["reason"],
+            "issue_type": refund.get("issue_type", "OTHER"),
+            "issue_label": rules.ISSUE_LABEL.get(refund.get("issue_type", "OTHER"), "其他原因"),
+            "mode": refund.get("mode"),
+            "created_at": refund["created_at"],
+            "reviewed_at": refund.get("reviewed_at"),
+            "reviewer_name": refund.get("reviewer_name"),
+            "review_note": refund.get("review_note"),
+            "review_history": refund.get("review_history") or [],
+        },
+        "order": _shape(order, data),
+        "decision": {
+            "decision": decision.get("decision"),
+            "decision_label": decision.get("decision_label"),
+            "risk_level": decision.get("risk_level"),
+            "risk_label": decision.get("risk_label"),
+            "risk_score": decision.get("risk_score"),
+            "priority": decision.get("priority"),
+            "amount_reason": decision.get("amount_reason"),
+            "summary": decision.get("summary"),
+            "needs_evidence": decision.get("needs_evidence"),
+            "rules": decision.get("rules") or [],
+        },
+        "order_history": [_brief(r) for r in history],
+        "user_history": [_brief(r) for r in user_history[:10]],
+        "lock": lock if lock.get("active") else None,
+        "user": {
+            "user_id": refund["user_id"],
+            "user_name": refund["user_name"],
+            "refund_count": len(user_history),
+            "approved_count": len([r for r in user_history if r["status"] == "APPROVED"]),
+        },
+    }
+
+
+def _brief(r: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "refund_id": r["refund_id"],
+        "order_id": r["order_id"],
+        "amount": yuan(r["amount_cents"]),
+        "status": r["status"],
+        "status_label": REFUND_STATUS_LABEL[r["status"]],
+        "mode": r.get("mode"),
+        "issue_label": rules.ISSUE_LABEL.get(r.get("issue_type", "OTHER"), "其他原因"),
+        "reason": r["reason"],
+        "created_at": r["created_at"],
+        "reviewer_name": r.get("reviewer_name"),
+        "review_note": r.get("review_note"),
+    }
 
 
 def pending_queue(limit: int = 100) -> list[dict[str, Any]]:
@@ -736,12 +1100,14 @@ def _human_delta(since: str) -> str:
 
 
 def dashboard_stats() -> dict[str, Any]:
-    """后台顶部统计。"""
+    """后台顶部统计，含一个轻量的分析口径摘要。"""
     refunds = list_refunds(limit=200)
     pending = [r for r in refunds if r["status"] == "PENDING"]
     orders = store.read_only(store.ORDERS_FILE, store.empty_orders())["orders"]
     today = datetime.now().strftime("%Y-%m-%d")
     locks = store.read_only(store.REFUNDS_FILE, store.empty_refunds()).get("locks", {})
+
+    month = analytics.summary("MONTH")["totals"]
     return {
         "pending_count": len(pending),
         "pending_amount": yuan(sum(r["amount_cents"] for r in pending)),
@@ -752,6 +1118,11 @@ def dashboard_stats() -> dict[str, Any]:
         "rejected_count": len([r for r in refunds if r["status"] == "REJECTED"]),
         "locked_count": len([lk for lk in locks.values() if lk.get("active")]),
         "order_count": len(orders),
+        # 分析口径
+        "month_refund_amount": month["refund_amount"],
+        "month_refund_rate": month["refund_rate"],
+        "month_refund_count": month["refund_count"],
+        "high_risk_pending": len([r for r in pending if r.get("risk_level") == "HIGH"]),
     }
 
 

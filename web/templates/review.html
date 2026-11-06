@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}审核 {{ d.refund.refund_id }} · 审核中心{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-head">
+    <h2>{{ d.order.item_name }}</h2>
+    <span class="panel-sub">
+      <a href="/queue" class="link">← 返回队列</a>
+      &nbsp;申请编号 {{ d.refund.refund_id }}
+    </span>
+  </div>
+
+  <div class="review-grid">
+    <!-- 左：申请与订单 -->
+    <div class="review-main">
+      <div class="card">
+        <h3>申请信息</h3>
+        <dl class="kv">
+          <dt>申请人</dt><dd>{{ d.refund.user_name if d.refund.user_name else d.user.user_name }}
+            <span class="muted">（历史 {{ d.user.refund_count }} 次售后，通过 {{ d.user.approved_count }} 次）</span></dd>
+          <dt>订单号</dt><dd>{{ d.order.order_id }}</dd>
+          <dt>商品</dt><dd>{{ d.order.item_name }}<span class="muted"> {{ d.order.item_desc or '' }}</span></dd>
+          <dt>问题类型</dt><dd>{{ d.refund.issue_label }}</dd>
+          <dt>用户描述</dt><dd>{{ d.refund.reason }}</dd>
+          <dt>当前状态</dt><dd><span class="tag">{{ d.refund.status_label }}</span></dd>
+          <dt>提交时间</dt><dd>{{ d.refund.created_at }}</dd>
+        </dl>
+      </div>
+
+      <div class="card">
+        <h3>订单与金额</h3>
+        <dl class="kv">
+          <dt>订单状态</dt><dd>{{ d.order.status_label }}</dd>
+          <dt>物流状态</dt><dd>
+            {% if d.order.shipping_state == 'DELIVERED' %}已签收 {{ d.order.delivered_at }}
+            {% elif d.order.shipping_state == 'SHIPPED' %}已发货 {{ d.order.shipped_at }}
+            {% else %}未发货{% endif %}
+            {% if d.order.tracking_no %}· {{ d.order.tracking_no }}{% endif %}
+          </dd>
+          <dt>订单实付</dt><dd>{{ d.order.amount }}</dd>
+          <dt>历史已退</dt><dd>{{ d.order.refunded_amount }}</dd>
+          <dt>可退余额</dt><dd>{{ d.order.refundable_balance }}</dd>
+          <dt>用户主张</dt><dd class="muted">{{ d.refund.requested_amount }}</dd>
+          <dt>系统判定金额</dt><dd><strong>{{ d.refund.amount }}</strong></dd>
+        </dl>
+        <div class="progress">
+          <div class="bar done" style="width: {{ (d.order.refunded_cents / d.order.amount_cents * 100) | round(2) }}%"></div>
+          <div class="bar pending" style="width: {{ (d.refund.amount_cents / d.order.amount_cents * 100) | round(2) }}%"></div>
+        </div>
+        <div class="progress-legend">
+          <span><i class="dot done"></i>已退 {{ (d.order.refunded_cents / d.order.amount_cents * 100) | round(1) }}%</span>
+          <span><i class="dot pending"></i>本次 {{ (d.refund.amount_cents / d.order.amount_cents * 100) | round(1) }}%</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>该订单退款历史</h3>
+        {% if d.order_history %}
+        <table class="tbl">
+          <thead><tr><th>编号</th><th>金额</th><th>状态</th><th>原因</th><th>时间</th></tr></thead>
+          <tbody>
+          {% for h in d.order_history %}
+            <tr class="{% if h.refund_id == d.refund.refund_id %}current{% endif %}">
+              <td class="mono">{{ h.refund_id }}</td>
+              <td>{{ h.amount }}</td>
+              <td><span class="tag sb-{{ h.status|lower }}">{{ h.status_label }}</span></td>
+              <td>{{ h.issue_label }}</td>
+              <td class="muted">{{ h.created_at }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="muted">这是该订单的第一笔退款申请。</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 右：Agent 判断依据 -->
+    <aside class="review-side">
+      <div class="card decision-card">
+        <h3>Agent 判断依据</h3>
+        <div class="decision-head">
+          <span class="pill risk {{ (d.decision.risk_level or 'low')|lower }}">
+            {{ d.decision.risk_label or '未评级' }}
+          </span>
+          <span class="pill prio">{{ d.decision.priority or '—' }}</span>
+          <span class="score">{{ d.decision.risk_score if d.decision.risk_score is not none else '—' }}<small> 分</small></span>
+        </div>
+        <p class="decision-summary">{{ d.decision.summary or '无判定记录' }}</p>
+
+        <div class="amount-box">
+          <div class="ab-label">金额算法</div>
+          <div class="ab-value">{{ d.decision.amount_reason or '—' }}</div>
+        </div>
+
+        <h4>命中规则</h4>
+        {% if d.decision.rules %}
+        <ul class="rulelist">
+          {% for r in d.decision.rules %}
+          <li>
+            <span class="rdelta {% if r.delta > 0 %}up{% else %}down{% endif %}">
+              {% if r.delta > 0 %}+{% endif %}{{ r.delta }}
+            </span>
+            <span class="rname">{{ r.name }}<small class="mono"> {{ r.id }}</small></span>
+            <span class="rdetail">{{ r.detail }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">没有命中任何规则。</p>
+        {% endif %}
+
+        {% if d.lock %}
+        <div class="lockbox">
+          该订单处于退款锁定：{{ d.lock.reason }}（{{ d.lock.locked_at }}）
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="card">
+        <h3>审核记录</h3>
+        {% if d.refund.review_history %}
+        <ul class="timeline">
+          {% for h in d.refund.review_history %}
+          <li>
+            <span class="t-dot"></span>
+            <div>
+              <div class="t-title">{{ h.action_label }} · {{ h.amount }}</div>
+              <div class="t-meta">{{ h.by }} · {{ h.at }}</div>
+              <div class="t-note">{{ h.note }}</div>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">尚未处理。</p>
+        {% endif %}
+      </div>
+
+      {% if d.refund.status == 'PENDING' %}
+      <div class="card">
+        <h3>处理</h3>
+        <form method="post" action="/refunds/{{ d.refund.refund_id }}/approve" class="stack">
+          <input type="hidden" name="back" value="/review/{{ d.refund.refund_id }}">
+          <input name="note" placeholder="通过备注（可选）" maxlength="80">
+          <button type="submit" class="btn primary block">通过放款 {{ d.refund.amount }}</button>
+        </form>
+        <form method="post" action="/refunds/{{ d.refund.refund_id }}/reject" class="stack">
+          <input type="hidden" name="back" value="/review/{{ d.refund.refund_id }}">
+          <input name="note" placeholder="驳回原因（必填）" maxlength="80" required>
+          <button type="submit" class="btn danger block">驳回申请</button>
+        </form>
+        <p class="muted small">驳回后该订单进入退款锁定，顾客不能自行重提。</p>
+      </div>
+      {% endif %}
+    </aside>
+  </div>
+
+  <div class="card">
+    <h3>该用户其他售后记录</h3>
+    {% if d.user_history|length > 1 %}
+    <table class="tbl">
+      <thead><tr><th>编号</th><th>订单</th><th>金额</th><th>状态</th><th>原因</th><th>时间</th></tr></thead>
+      <tbody>
+      {% for h in d.user_history %}
+        {% if h.refund_id != d.refund.refund_id %}
+        <tr>
+          <td class="mono">{{ h.refund_id }}</td>
+          <td class="mono">{{ h.order_id }}</td>
+          <td>{{ h.amount }}</td>
+          <td><span class="tag sb-{{ h.status|lower }}">{{ h.status_label }}</span></td>
+          <td>{{ h.issue_label }}</td>
+          <td class="muted">{{ h.created_at }}</td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">除本单外没有其他售后记录。</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

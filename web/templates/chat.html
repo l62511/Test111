@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Agent 会话 · 订单客服 Agent 后台{% endblock %}
+
+{% block content %}
+<section class="panel chat-panel">
+  <div class="panel-head">
+    <h2>Agent 会话观测</h2>
+    <span class="panel-sub">在这里直接和 Agent 对话，每一步思考与工具调用都会留痕</span>
+  </div>
+
+  <div class="chat-layout">
+    <!-- 会话列表 -->
+    <aside class="chat-aside">
+      <div class="aside-head">
+        <span>最近会话</span>
+        <a class="btn tiny" href="/chat?new=1&as_user={{ target }}">新建</a>
+      </div>
+      {% if sessions %}
+      <ul class="sesslist">
+        {% for s in sessions %}
+        <li class="{% if session and s.session_id == session.session_id %}on{% endif %}">
+          <a href="/chat?sid={{ s.session_id }}">
+            <div class="sl-title">{{ s.title }}</div>
+            <div class="sl-meta">
+              <span class="pill tiny {{ 'web' if s.channel == 'WEB' else 'cli' }}">{{ s.channel }}</span>
+              {{ s.user_name }} · {{ s.turns }} 轮
+            </div>
+            <div class="sl-time">{{ s.updated_at }}</div>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="muted small">还没有会话，选个顾客身份开始。</p>
+      {% endif %}
+    </aside>
+
+    <!-- 对话区 -->
+    <div class="chat-main">
+      <div class="chat-bar">
+        <form method="get" action="/chat" class="inline-form">
+          <input type="hidden" name="new" value="1">
+          <label class="lbl">以顾客身份</label>
+          <select name="as_user">
+            {% for c in customers %}
+            <option value="{{ c.user_id }}" {% if c.user_id == target %}selected{% endif %}>
+              {{ c.name }}（{{ c.username }}）
+            </option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn tiny">开始新会话</button>
+        </form>
+        {% if session %}
+        <span class="muted small mono">{{ session.session_id }}</span>
+        {% endif %}
+      </div>
+
+      <div class="thread">
+        {% if not session or not session.messages %}
+        <div class="empty">
+          <div class="empty-icon"></div>
+          <p>还没有对话。试试问“我最近有哪些订单”，或“本周退款金额最高的商品是什么”。</p>
+        </div>
+        {% else %}
+          {% for m in session.messages %}
+            {% if m.role == 'user' %}
+            <div class="msg user"><div class="bubble">{{ m.content }}</div>
+              <div class="msg-meta">{{ m.ts }}</div></div>
+            {% else %}
+            <div class="msg agent">
+              <div class="bubble">
+                {% if m.steps %}
+                <details class="steps" {% if loop.last %}open{% endif %}>
+                  <summary>{{ m.steps|length }} 个执行步骤</summary>
+                  <ol class="steplist">
+                    {% for st in m.steps %}
+                      {% if st.type == 'tool_call' %}
+                      <li class="st-call">
+                        <span class="st-badge">调用</span>
+                        <span class="st-name mono">{{ st.name }}</span>
+                        <code class="st-args">{{ st.text }}</code>
+                      </li>
+                      {% elif st.type == 'tool_result' %}
+                      <li class="st-result {{ 'err' if st.status == 'ERROR' else '' }}">
+                        <span class="st-badge">{{ '失败' if st.status == 'ERROR' else '结果' }}</span>
+                        <span class="st-name mono">{{ st.name }}</span>
+                        <span class="st-text">{{ st.text }}</span>
+                      </li>
+                      {% elif st.type == 'thought' %}
+                      <li class="st-thought">
+                        <span class="st-badge">思考</span>
+                        <span class="st-text">{{ st.text }}</span>
+                      </li>
+                      {% endif %}
+                    {% endfor %}
+                  </ol>
+                </details>
+                {% endif %}
+                <div class="reply">{{ m.content }}</div>
+              </div>
+              <div class="msg-meta">{{ m.ts }}</div>
+            </div>
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      {% if pending %}
+      <div class="confirm-box">
+        <div class="cb-title">Agent 请求执行不可逆操作，等待你确认</div>
+        <ul class="cb-list">
+          {% for p in pending %}
+          <li><strong>{{ p.name }}</strong>
+            {% for k, v in p.args.items() %}<span class="mono">{{ k }}={{ v }}</span> {% endfor %}
+          </li>
+          {% endfor %}
+        </ul>
+        <div class="cb-actions">
+          <form method="post" action="/chat/confirm" class="inline-form">
+            <input type="hidden" name="sid" value="{{ session.session_id }}">
+            <input type="hidden" name="as_user" value="{{ target }}">
+            <input type="hidden" name="decision" value="approve">
+            <button class="btn primary" type="submit">确认执行</button>
+          </form>
+          <form method="post" action="/chat/confirm" class="inline-form">
+            <input type="hidden" name="sid" value="{{ session.session_id }}">
+            <input type="hidden" name="as_user" value="{{ target }}">
+            <input type="hidden" name="decision" value="reject">
+            <button class="btn danger" type="submit">取消操作</button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+
+      <form method="post" action="/chat/send" class="composer">
+        <input type="hidden" name="sid" value="{{ session.session_id if session else '' }}">
+        <input type="hidden" name="as_user" value="{{ target }}">
+        <input name="text" placeholder="说点什么…（例如：帮我把 ORD20261102005 退掉，键帽松动）"
+               autocomplete="off" required maxlength="300">
+        <button type="submit" class="btn primary">发送</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}
